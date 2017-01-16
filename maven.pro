@@ -10,10 +10,12 @@ LIBS += -lofstd
 
 SOURCES += main.cpp \
     MainWindow.cpp \
-    NiftiImage.cpp
+    NiftiImage.cpp \
+	Image.cpp
 
 HEADERS += \
     MainWindow.h \
     NiftiImage.h \
-    nifti1.h
+    nifti1.h \
+    Image.h
 

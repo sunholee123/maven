@@ -7,13 +7,11 @@
 #include <QMouseEvent>
 #include <vector>
 
-#include "NiftiImage.h"
+//#include "NiftiImage.h"
 #include <Eigen/Geometry>
-#include <dcmtk/dcmdata/dctk.h>
+//#include <dcmtk/dcmdata/dctk.h>
 
-#define CORONAL 0
-#define SAGITTAL 1
-#define AXIAL 2
+#include "Image.h"
 
 #define t1image 0
 #define slabimage 1
@@ -21,6 +19,15 @@
 
 using namespace Eigen;
 
+struct Metabolite
+{
+	string name;
+	float conc;
+	int sd;
+	float ratio;
+	bool qc;
+};
+/*
 struct DicomInfo
 {
     Float32 coordFH, coordAP, coordRL;
@@ -33,33 +40,25 @@ struct DicomInfo
         result.coordRL = a.coordRL - b.coordRL;
         result.angleFH = a.angleFH - b.angleFH;
         result.angleAP = a.angleAP - b.angleAP;
-        result.angleRL = a.angleRL - b.angleRL;
+		result.angleRL = a.angleRL - b.angleRL;
         return result;
     }
 };
-typedef vector<vector<vector<float>>> vec3df; // vector - 3d - float
-
-struct Metabolite {
-    string name;
-    float conc;
-    int sd;
-    float ratio;
-    bool qc;
-};
-
-struct TableInfo {
-    //string metaInfo[35][4];
-    //string fwhm, snr;
-    map<string, Metabolite> metaInfo;
-    float fwhm;
-    int snr;
-    float pvc;
-    bool isAvailable = false;
+*/
+struct TableInfo
+{
+	//string metaInfo[35][4];
+	//string fwhm, snr;
+	map<string, Metabolite> metaInfo;
+	float fwhm;
+	int snr;
+	float pvc;
+	bool isAvailable = false;
 };
 
 struct coord
 {
-    int a, b, c;
+	int a, b, c;
 };
 
 class QAction;
@@ -71,152 +70,165 @@ class QFileInfo;
 
 class MainWindow : public QMainWindow
 {
-    Q_OBJECT
+	Q_OBJECT
 
 public:
-    MainWindow();
-    ~MainWindow();
+	MainWindow();
+	~MainWindow();
 
 private slots:
-    void openT1();
-    void makeSlabFromDicom();
-    void loadT1Segs();
-    void openSlab();
-    void openLCM();
-    void valueUpdateCor(int value);
-    void valueUpdateSag(int value);
-    void valueUpdateAxi(int value);
-    void openSlabMask();
-    void makeSlabMask();
-    void valueUpdateIntensity(int value);
-    void updateMetaChecked(QAbstractButton*);
-    void calAvgButtonClicked();
-    void calMajorButtonClicked();
+	void openT1();
+	void makeSlabFromDicom();
+	void loadT1Segs();
+	void openSlab();
+	void openLCM();
+	void valueUpdateCor(int value);
+	void valueUpdateSag(int value);
+	void valueUpdateAxi(int value);
+	void openSlabMask();
+	void makeSlabMask();
+	void valueUpdateIntensity(int value);
+	void updateMetaChecked(QAbstractButton*);
+	void calAvgButtonClicked();
+	void calMajorButtonClicked();
 
 private:
-    QWidget *mainWidget;
-    int planeSize = 500;
-    QLabel *plane[3];
-    QLabel *sliceInfoText[3];
-    QSpinBox *sliceSpinBox[3];
-    QTextEdit *outputWindow;
-    int sliceNum[3]; // coronal, sagittal, axial slice
-    QGridLayout *viewerLayout;
-    QGridLayout *ctrlLayout;
-    QVBoxLayout *lcmLayout;
-    QGroupBox *lcmInfoBox;
+	QWidget *mainWidget;
+	int planeSize = 500;
+	QLabel *plane[3];
+	QLabel *sliceInfoText[3];
+	QSpinBox *sliceSpinBox[3];
+	QTextEdit *outputWindow;
+	int sliceNum[3]; // coronal, sagittal, axial slice
+	QGridLayout *viewerLayout;
+	QGridLayout *ctrlLayout;
+	QVBoxLayout *lcmLayout;
+	QGroupBox *lcmInfoBox;
 
-    QTextEdit *lcmInfo;
+	QTextEdit *lcmInfo;
 
-    QLabel *intensityText;
-    //QDoubleSpinBox *intensitySpinBox;
-    QSpinBox *intensitySpinBox;
+	QLabel *intensityText;
+	//QDoubleSpinBox *intensitySpinBox;
+	QSpinBox *intensitySpinBox;
 
-    void createActions();
-    void setLCMLayout();
+	void createActions();
+	void setLCMLayout();
 
-    // menu & actions
-    QMenu *slabMenu;
-    QAction *overlaySlabAct;
-    QAction *openSlabMaskAct;
-    void setEnabledT1DepMenus(bool);
+	// menu & actions
+	QMenu *slabMenu;
+	QAction *overlaySlabAct;
+	QAction *openSlabMaskAct;
+	void setEnabledT1DepMenus(bool);
 
-    // T1 image
-    NiftiImage *img = NULL;
-    vec3df T1vol;
-    QImage T1Images[3];
-    QString T1FileName;
-    float intensity;
-    float T1MaxVal;
+	// T1 image
+	/*
+	NiftiImage *img = NULL;
+	vec3df T1vol;
+	QString T1FileName;
+	float intensity;
+	float T1MaxVal;
 
-    bool loadT1(const QString &);
-    void setDefaultIntensity();
-    float getMaxVal(vec3df imagevol);
-    void setSliceNum();
-//    vec3df getImgvol(NiftiImage *image);
+	void setDefaultIntensity();
+	float getMaxVal(vec3df imagevol);
+	void setSliceNum();
+	//    vec3df getImgvol(NiftiImage *image);
 	void getImgvol(NiftiImage *image, vec3df *array3D);
+	*/
 
-    // DICOM image
-    DicomInfo T1, MRSI;
-    bool findDicomFiles(QString dir);
-    Float64 mrsiVoxSizeX;
-    Float64 mrsiVoxSizeY;
-    Float64 mrsiVoxSizeZ;
-    Sint16 mrsiVoxNumX;
-    Sint16 mrsiVoxNumY;
-    Sint16 mrsiVoxNumZ;
+	QImage T1planes[3];
+	Image *T1 = NULL;
+	Image *slab = NULL;
+	bool loadImage(Image **img, const QString &);
 
-    // Slab image
-    NiftiImage *slab = NULL;
-    QImage slabImages[3];
-    vec3df slabvol;
+	// DICOM image
+//    DicomInfo T1, MRSI;
+	bool findDicomFiles(QString dir);
+	Float64 mrsiVoxSizeX;
+	Float64 mrsiVoxSizeY;
+	Float64 mrsiVoxSizeZ;
+	Sint16 mrsiVoxNumX;
+	Sint16 mrsiVoxNumY;
+	Sint16 mrsiVoxNumZ;
 
-    bool loadSlab(const QString &);
+	// Slab image
+//    NiftiImage *slab = NULL;
+	QImage slabplanes[3];
+//    vec3df slabvol;
 
-    // LCM info
-    TableInfo ***tables = NULL;
-    QStringList metaList;
+	bool loadSlab(const QString &);
 
-    bool loadLCMInfo(QString dir); //bool loadLCMInfo(QStringList filepaths);
-    TableInfo parseTable(string filename);  //TableInfo parseTable(QString filename);
-    void presentLCMInfo();
-    void saveLCMData();
-    void readLCMData();
-    QString getLCMFileName();
+	// LCM info
+	TableInfo ***tables = NULL;
+	QStringList metaList;
 
-    // Draw and update planes
-    bool overlay = false;
-    float selectedVoxel = 0;
+	bool loadLCMInfo(QString dir); //bool loadLCMInfo(QStringList filepaths);
+	TableInfo parseTable(string filename);  //TableInfo parseTable(QString filename);
+	void presentLCMInfo();
+	void saveLCMData();
+	void readLCMData();
+	QString getLCMFileName();
 
-    void drawPlane(int planeType);
-    void overlayImage(QImage base, QImage overlay, int planeType);
-    void initImages(int planeType, int imageType);
+	// Draw and update planes
+	bool overlay = false;
+	float selectedVoxel = 0;
 
-    // Slab - voxel picking (single voxle selection yet)
-    bool eventFilter(QObject *watched, QEvent *e);
-    float getSlabVoxelValue(int x, int y, int planeType);
-    void changeVoxelValues(float value, bool on);
+	void drawPlane(int planeType);
+	void overlayImage(QImage base, QImage overlay, int planeType);
+	void initImages(int planeType, int imageType);
 
-    // Mask (voxel quality check)
-    NiftiImage *mask = NULL;
-    vec3df maskvol;
-    QImage maskImages[3];
-    //bool mask = false;
+	// Slab - voxel picking (single voxle selection yet)
+	bool eventFilter(QObject *watched, QEvent *e);
+	float getSlabVoxelValue(int x, int y, int planeType);
+	void changeVoxelValues(float value, bool on);
 
-    bool loadSlabMask(const QString &);
-    void voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc);
-    void saveSlabMask(string metabolite);
-    QString getMaskFileName(string metabolite);
+	// Mask (voxel quality check)
+	//NiftiImage *mask = NULL;
+	Image *mask = NULL;
+	//vec3df maskvol;
+	QImage maskplanes[3];
+	//bool mask = false;
 
-    // statistics
-    QStringList selMetaList;
-    float calAvgConc(string metabolite);
+	bool loadSlabMask(const QString &);
+	void voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc);
+	void saveSlabMask(string metabolite);
+	QString getMaskFileName(string metabolite);
 
-    // Slab
-    void makeSlab();
-    QString getSlabFileName();
+	// statistics
+	QStringList selMetaList;
+	float calAvgConc(string metabolite);
 
-    // Slab - transformation
-    vec3df transformation3d(vec3df imgvol, float coordFH, float coordAP, float coordRL , float angleFH, float angleAP, float angleRL, float t1VoxSizeX, float t1VoxSizeY,float t1VoxSizeZ);
-    float deg2rad(float degree);
+	// Slab
+	void makeSlab();
+	QString getSlabFileName();
 
-    float* arr3Dto1D(NiftiImage *image, vec3df *imagevol);
-    bool saveImageFile(string filename, NiftiImage *image, vec3df *data);
+	// Slab - transformation
+	vec3df transformation3d(vec3df imgvol, float coordFH, float coordAP, float coordRL , float angleFH, float angleAP, float angleRL, float t1VoxSizeX, float t1VoxSizeY,float t1VoxSizeZ);
+	float deg2rad(float degree);
 
-    // Partial volume correction
+	float* arr3Dto1D(NiftiImage *image, vec3df *imagevol);
+	bool saveImageFile(string filename, NiftiImage *image, vec3df *data);
+
+	// Partial volume correction
 //    void calPVC(vec3df gmvol, vec3df wmvol, vec3df csfvol);
 
-    coord n2abc(int n);
+	coord n2abc(int n);
 
-    void print(QString str);
-    void printLine();
+	void print(QString str);
+	void printLine();
 
-    void savePref();
-    void readPref();
-    QString getPrefFileName();
+	void savePref();
+	void readPref();
+	QString getPrefFileName();
 
-    // help menu
-    void about();
+	// help menu
+	void about();
+
+	void setSliceNum(Image *img);
+	double intensity;
+	void initAll();
+
+	inline bool isFileExists(QString filename);
+
 };
 
 #endif

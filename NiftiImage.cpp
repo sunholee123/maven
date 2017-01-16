@@ -1726,9 +1726,9 @@ void NiftiImage::setDims(const int nx, const int ny, const int nz, const int nt)
     _dim[2] = ny;
     _dim[3] = nz;
 }
-int NiftiImage::voxelsPerSlice() const { return _dim[1] * _dim[2]; };
-int NiftiImage::voxelsPerVolume() const { return _dim[1] * _dim[2] * _dim[3]; };
-int NiftiImage::voxelsTotal() const { return _dim[1] * _dim[2] * _dim[3] * _dim[4]; };
+int NiftiImage::voxelsPerSlice() const { return _dim[1] * _dim[2]; }
+int NiftiImage::voxelsPerVolume() const { return _dim[1] * _dim[2] * _dim[3]; }
+int NiftiImage::voxelsTotal() const { return _dim[1] * _dim[2] * _dim[3] * _dim[4]; }
 float NiftiImage::dx() const { return _voxdim[1]; }
 float NiftiImage::dy() const { return _voxdim[2]; }
 float NiftiImage::dz() const { return _voxdim[3]; }
