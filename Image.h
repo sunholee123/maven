@@ -11,8 +11,6 @@
 #define SAGITTAL 1
 #define AXIAL 2
 
-typedef vector<vector<vector<float>>> vec3df; // vector - 3d - float
-
 struct DicomInfo {
     Float32 coordFH, coordAP, coordRL;
     Float32 angleFH, angleAP, angleRL;
@@ -39,32 +37,35 @@ public:
 
 	void open(QString filename, char rw);
 
-    void setIntensity(double value);
-    double getIntensity();
-
-    QString getFileName();
-	float getImgVal(size_t i, size_t j, size_t k);
-	void setImgVal(size_t i, size_t j, size_t k, float value);
-
-    size_t dx();
+	size_t dx();
     size_t dy();
     size_t dz();
     float sx();
     float sy();
     float sz();
 
+	double getIntensity();
+	QString getFileName();
+	float getImgVal(size_t i, size_t j, size_t k);
+	QImage getPlaneImage(int planetype, int slicenum);
+	DicomInfo getDCMInfo();
+
+	void setIntensity(double value);
     void setDCMInfo(DicomInfo dcminfo);
-    DicomInfo getDCMInfo();
-	//bool saveImageFile(QString filename, vec3df *slabvol);
-	void saveImageFile(QString filename, vec3df array3D, QString reffilename);
-	inline bool isFileExists();
 	void setFileName(QString filename);
-	void open();
+	void setImgVal(size_t i, size_t j, size_t k, float value);
+	void setBlankImgvol(size_t size_x, size_t size_y, size_t size_z);
+
+	inline bool isFileExists();
+	bool isAvailable();
+	void setOverlay(bool isoverlay);
+	bool isOverlay();
+
+	void saveImageFile(QString filename, QString reffilename);
 
 private:
     NiftiImage *img = NULL;
     QString filename;
-//    vec3df imgvol;
 	float *imgvol;
     QImage T1Images[3];
 
@@ -76,8 +77,8 @@ private:
 
     DicomInfo dcminfo;
 
-	float* arr3Dto1D(vec3df array3D);
-
+	bool available = false;
+	bool overlay = false;
 };
 
 

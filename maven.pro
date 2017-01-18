@@ -19,3 +19,5 @@ HEADERS += \
     nifti1.h \
     Image.h
 
+#QMAKE_CXXFLAGS_RELEASE = -O3 -Ofast
+QMAKE_CXXFLAGS_RELEASE = -O3 -m64 -Ofast -flto -march=native -funroll-loops

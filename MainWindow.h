@@ -120,25 +120,9 @@ private:
 	QAction *openSlabMaskAct;
 	void setEnabledT1DepMenus(bool);
 
-	// T1 image
-	/*
-	NiftiImage *img = NULL;
-	vec3df T1vol;
-	QString T1FileName;
-	float intensity;
-	float T1MaxVal;
-
-	void setDefaultIntensity();
-	float getMaxVal(vec3df imagevol);
-	void setSliceNum();
-	//    vec3df getImgvol(NiftiImage *image);
-	void getImgvol(NiftiImage *image, vec3df *array3D);
-	*/
-
-	QImage T1planes[3];
-	Image *T1 = NULL;
-	Image *slab = NULL;
-	bool loadImage(Image **img, const QString &);
+	Image *T1;
+	Image *slab;
+	Image *mask;
 
 	// DICOM image
 //    DicomInfo T1, MRSI;
@@ -149,11 +133,6 @@ private:
 	Sint16 mrsiVoxNumX;
 	Sint16 mrsiVoxNumY;
 	Sint16 mrsiVoxNumZ;
-
-	// Slab image
-//    NiftiImage *slab = NULL;
-	QImage slabplanes[3];
-//    vec3df slabvol;
 
 	bool loadSlab(const QString &);
 
@@ -169,24 +148,16 @@ private:
 	QString getLCMFileName();
 
 	// Draw and update planes
-	bool overlay = false;
 	float selectedVoxel = 0;
 
 	void drawPlane(int planeType);
-	void overlayImage(QImage base, QImage overlay, int planeType);
+	QImage overlayImage(QImage base, QImage overlay);
 	void initImages(int planeType, int imageType);
 
 	// Slab - voxel picking (single voxle selection yet)
 	bool eventFilter(QObject *watched, QEvent *e);
 	float getSlabVoxelValue(int x, int y, int planeType);
 	void changeVoxelValues(float value, bool on);
-
-	// Mask (voxel quality check)
-	//NiftiImage *mask = NULL;
-	Image *mask = NULL;
-	//vec3df maskvol;
-	QImage maskplanes[3];
-	//bool mask = false;
 
 	bool loadSlabMask(const QString &);
 	void voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc);
@@ -202,15 +173,9 @@ private:
 	QString getSlabFileName();
 
 	// Slab - transformation
-	vec3df transformation3d(vec3df imgvol, float coordFH, float coordAP, float coordRL , float angleFH, float angleAP, float angleRL, float t1VoxSizeX, float t1VoxSizeY,float t1VoxSizeZ);
+	Image* transformation3d(Image* imagevol, float coordAP, float coordFH, float coordRL, float angleAP, float angleFH, float angleRL, float t1VoxSizeX, float t1VoxSizeY, float t1VoxSizeZ);
+
 	float deg2rad(float degree);
-
-	float* arr3Dto1D(NiftiImage *image, vec3df *imagevol);
-	bool saveImageFile(string filename, NiftiImage *image, vec3df *data);
-
-	// Partial volume correction
-//    void calPVC(vec3df gmvol, vec3df wmvol, vec3df csfvol);
-
 	coord n2abc(int n);
 
 	void print(QString str);

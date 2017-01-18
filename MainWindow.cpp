@@ -77,6 +77,11 @@ MainWindow::MainWindow()
 	setLCMLayout();
 	mainLayout->addLayout(viewerLayout);
 	mainLayout->addLayout(lcmLayout);
+
+	T1 = new Image();
+	slab = new Image();
+	slab->setOverlay(true);
+	mask = new Image();
 }
 
 MainWindow::~MainWindow()
@@ -179,20 +184,13 @@ void MainWindow::about()
 
 void MainWindow::initAll()
 {
-	slab = new Image(getSlabFileName(), 'r');
-
-	if(isFileExists(getPrefFileName()))
-		readPref();
-
-	if(isFileExists(getSlabFileName()))
-		loadSlab(getSlabFileName());
-
-	if(isFileExists(getLCMFileName()))
-		readLCMData();
-
+	if(isFileExists(getPrefFileName()))	{	readPref();						}
+	if(isFileExists(getSlabFileName()))	{	loadSlab(getSlabFileName());	}
+	if(isFileExists(getLCMFileName()))	{	readLCMData();					}
+/*
 	if(isFileExists(T1->getFileName()) && slab != NULL)
 		loadT1Segs();
-
+*/
 }
 
 void MainWindow::openT1()
@@ -202,8 +200,7 @@ void MainWindow::openT1()
 	//	while (dialog.exec() == QDialog::Accepted && !loadImage(dialog.selectedFiles().first()), T1) {}
 	if(dialog.exec())
 	{
-		QString filename = dialog.selectedFiles().first();
-		loadImage(&T1, filename);
+		T1->open(dialog.selectedFiles().first(), 'r');
 		setSliceNum(T1);
 		setEnabledT1DepMenus(true);
 		print("Loading T1 image is complete. (" + T1->getFileName() + ")");
@@ -221,7 +218,7 @@ void MainWindow::openSlab()
 
 //	while (dialog.exec() == QDialog::Accepted && !loadSlab(dialog.selectedFiles().first())) {}
 	dialog.exec();
-	loadImage(&slab, dialog.selectedFiles().first());
+	slab->open(dialog.selectedFiles().first(), 'r');
 
 	printLine();
 }
@@ -234,14 +231,6 @@ void MainWindow::openSlabMask()
 	while (dialog.exec() == QDialog::Accepted && !loadSlabMask(dialog.selectedFiles().first())) {}
 
 	printLine();
-}
-
-bool MainWindow::loadImage(Image **img, const QString &filename)
-{
-	if (*img!=NULL)
-		delete *img;
-
-	*img = new Image(filename, 'r');
 }
 
 void MainWindow::makeSlabFromDicom()
@@ -298,9 +287,6 @@ void MainWindow::loadT1Segs()
 	const size_t dimX = T1->dx();
 	const size_t dimY = T1->dy();
 	const size_t dimZ = T1->dz();
-//    NiftiImage gmimg = NiftiImage(gmFileName.toStdString(), 'r');
-//	vec3df tempvol;
-//    Image::getImgvol(&gmimg, &tempvol);
 	Image *gmimg = new Image(gmFileName, 'r');
 
 	for (size_t i = 0; i < dimX; i++)
@@ -471,10 +457,6 @@ bool MainWindow::findDicomFiles(QString dir)
 
 	if (!it.hasNext())
 	{
-		/*
-		QMessageBox::StandardButton msg;
-		msg = QMessageBox::critical(this, "Error!", "Can't find DICOM files.", QMessageBox::Ok);
-		*/
 		QMessageBox::critical(this, "Error!", "Can't find DICOM files.", QMessageBox::Ok);
 		return false;
 	}
@@ -561,19 +543,11 @@ bool MainWindow::findDicomFiles(QString dir)
 /***** load Slab image *****/
 bool MainWindow::loadSlab(const QString &fileName)
 {
-	/*
-	if (mask != NULL)
-		delete mask;
-
-	if (slab != NULL)
-		delete slab;
-*/
-	loadImage(&slab, fileName);
+	slab->open(fileName, 'r');
 	drawPlane(CORONAL);
 	drawPlane(SAGITTAL);
 	drawPlane(AXIAL);
 	print("Loading slab image is complete. (" + fileName + ")");
-	overlay = true;
 	return true;
 }
 
@@ -585,10 +559,6 @@ bool MainWindow::loadLCMInfo(QString dir)
 
 	if (!it.hasNext())
 	{
-		/*
-		QMessageBox::StandardButton msg;
-		msg = QMessageBox::critical(this, "Error!", "Can't find *.table files.", QMessageBox::Ok);
-		*/
 		QMessageBox::critical(this, "Error!", "Can't find *.table files.", QMessageBox::Ok);
 		return false;
 	}
@@ -729,26 +699,29 @@ void MainWindow::presentLCMInfo()
 	lcmInfo->append("SNR: " + QString::number(temp.snr));
 }
 
-/***** draw and update planes *****/
-void MainWindow::drawPlane(int planeType)
-{
-	initImages(planeType, t1image);
 
-	if (mask != NULL)	// overlay mask image
+/***** draw and update planes *****/
+
+void MainWindow::drawPlane(int planetype)
+{
+	QImage baseimg, overlayimg;
+	int slice = sliceNum[planetype];
+	// set images
+	if (T1->isAvailable())
 	{
-		initImages(planeType, maskimage);
-		overlayImage(T1planes[planeType], maskplanes[planeType], planeType);
+		baseimg = T1->getPlaneImage(planetype, slice);
 	}
-	else if (overlay == true)	// overlay slab image
+	if (slab->isAvailable())
 	{
-		initImages(planeType, slabimage);
-		overlayImage(T1planes[planeType], slabplanes[planeType], planeType);
+		overlayimg = slab->getPlaneImage(planetype, slice);
+		baseimg = overlayImage(baseimg, overlayimg);
 	}
-	else	// T1 image only
-		plane[planeType]->setPixmap(QPixmap::fromImage(T1planes[planeType].scaled(planeSize, planeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+
+	// draw part
+	plane[planetype]->setPixmap(QPixmap::fromImage(baseimg.scaled(planeSize, planeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
 }
 
-void MainWindow::overlayImage(QImage base, QImage overlay, int planeType)
+QImage MainWindow::overlayImage(QImage base, QImage overlay)
 {
 	QImage result(base.width(), base.height(), QImage::Format_ARGB32_Premultiplied);
 	QPainter painter(&result);
@@ -762,199 +735,7 @@ void MainWindow::overlayImage(QImage base, QImage overlay, int planeType)
 	painter.setCompositionMode(QPainter::CompositionMode_DestinationOver);
 	painter.fillRect(result.rect(), Qt::white);
 	painter.end();
-	result = result.scaled(planeSize, planeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-	plane[planeType]->setPixmap(QPixmap::fromImage(result));
-}
-
-void MainWindow::initImages(int planeType, int imageType)
-{
-	QRgb value;
-	int width = 0;
-	int height = 0;
-	int width_act = 0;
-	int height_act = 0;
-	float val = 0;
-	Image *img = T1;
-	double intensity = img->getIntensity();
-
-	if (imageType == t1image)
-	{
-		switch (planeType)
-		{
-		case CORONAL:
-			width = img->dx();
-			height = img->dz();
-			width_act = width * img->sx();
-			height_act = height * img->sz();
-			break;
-
-		case SAGITTAL:
-			width = img->dy();
-			height = img->dz();
-			width_act = width * img->sy();
-			height_act = height * img->sz();
-			break;
-
-		case AXIAL:
-			width = img->dx();
-			height = img->dy();
-			width_act = width * img->sx();
-			height_act = height * img->sy();
-			break;
-		}
-
-		T1planes[planeType] = QImage(width, height, QImage::Format_RGB32);
-		T1planes[planeType].fill(qRgb(0, 0, 0));
-
-		for (int i = 0; i < width; i++)
-		{
-			for (int j = 0; j < height; j++)
-			{
-				switch (planeType)
-				{
-				case CORONAL:
-					val = T1->getImgVal(i, sliceNum[planeType], j);
-					break;
-
-				case SAGITTAL:
-					val = T1->getImgVal(sliceNum[planeType], i, j);
-					break;
-
-				case AXIAL:
-					val = T1->getImgVal(i, j, sliceNum[planeType]);
-					break;
-				}
-
-				value = qRgb(val * intensity, val * intensity, val * intensity);
-				T1planes[planeType].setPixel(i, height - j - 1, value);
-			}
-		}
-
-		// for anisotropy images
-		T1planes[planeType] = T1planes[planeType].scaled(width_act, height_act, Qt::IgnoreAspectRatio);
-	}
-	else if (imageType == slabimage)
-	{
-		switch (planeType)
-		{
-		case CORONAL:
-			width = img->dx();
-			height = img->dz();
-			width_act = width * img->sx();
-			height_act = height * img->sz();
-			break;
-
-		case SAGITTAL:
-			width = img->dy();
-			height = img->dz();
-			width_act = width * img->sy();
-			height_act = height * img->sz();
-			break;
-
-		case AXIAL:
-			width = img->dx();
-			height = img->dy();
-			width_act = width * img->sx();
-			height_act = height * img->sy();
-			break;
-		}
-
-		slabplanes[planeType] = QImage(width, height, QImage::Format_ARGB32);
-		slabplanes[planeType].fill(qRgba(0, 0, 0, 255));
-
-		for (int i = 0; i < width; i++)
-		{
-			for (int j = 0; j < height; j++)
-			{
-				switch (planeType)
-				{
-				case CORONAL:
-					val = slab->getImgVal(i, sliceNum[planeType], j);
-					break;
-
-				case SAGITTAL:
-					val = slab->getImgVal(sliceNum[planeType], i, j);
-					break;
-
-				case AXIAL:
-					val = slab->getImgVal(i, j, sliceNum[planeType]);
-					break;
-				}
-
-				if (val == 0)
-					value = qRgba(0, 0, 0, 0);
-				else if (val == selectedVoxel)
-					value = qRgba(val * intensity, 0, 0, 255);
-				else
-					value = qRgba(val * intensity, val * intensity, 0, 255);
-
-				slabplanes[planeType].setPixel(i, height - j - 1, value);
-			}
-		}
-
-		// for anisotropy images
-		slabplanes[planeType] = slabplanes[planeType].scaled(width_act, height_act, Qt::IgnoreAspectRatio);
-	}
-	else if (imageType == maskimage)
-	{
-		switch (planeType)
-		{
-		case CORONAL:
-			width = img->dx();
-			height = img->dz();
-			width_act = width * img->sx();
-			height_act = height * img->sz();
-			break;
-
-		case SAGITTAL:
-			width = img->dy();
-			height = img->dz();
-			width_act = width * img->sy();
-			height_act = height * img->sz();
-			break;
-
-		case AXIAL:
-			width = img->dx();
-			height = img->dy();
-			width_act = width * img->sx();
-			height_act = height * img->sy();
-			break;
-		}
-
-		maskplanes[planeType] = QImage(width, height, QImage::Format_ARGB32);
-		maskplanes[planeType].fill(qRgba(0, 0, 0, 0));
-
-		for (int i = 0; i < width; i++)
-		{
-			for (int j = 0; j < height; j++)
-			{
-				switch (planeType)
-				{
-				case CORONAL:
-					val = mask->getImgVal(i, sliceNum[planeType], j);
-					break;
-
-				case SAGITTAL:
-					val = mask->getImgVal(sliceNum[planeType], i, j);
-					break;
-
-				case AXIAL:
-					val = mask->getImgVal(i, j, sliceNum[planeType]);
-					break;
-				}
-
-				if (val == 1)
-					value = qRgba(255, 255, 0, 255);
-				else
-					value = qRgba(0, 0, 0, 0);
-
-				maskplanes[planeType].setPixel(i, height - j - 1, value);
-			}
-		}
-
-		// for anisotropy images
-		maskplanes[planeType] = maskplanes[planeType].scaled(width_act, height_act, Qt::IgnoreAspectRatio);
-	}
+	return result;
 }
 
 void MainWindow::valueUpdateCor(int value)
@@ -984,8 +765,9 @@ void MainWindow::valueUpdateIntensity(int value)
 }
 
 /***** slab voxel picking *****/
+
 bool MainWindow::eventFilter(QObject *watched, QEvent *e)
-{
+{/*
 	if (e->type() == QEvent::MouseButtonPress)
 	{
 		QMouseEvent *event = (QMouseEvent *)e;
@@ -1043,9 +825,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
 		{
 			if ((QLabel *)watched == plane[CORONAL] || (QLabel *)watched == plane[SAGITTAL] || (QLabel *)watched == plane[AXIAL]) // and mouse event occured in plane
 			{
-				drawPlane(CORONAL);
-				drawPlane(SAGITTAL);
-				drawPlane(AXIAL);
+				drawImg2Plane(CORONAL);
+				drawImg2Plane(SAGITTAL);
+				drawImg2Plane(AXIAL);
 
 				if (tables != NULL && selectedVoxel)
 					presentLCMInfo();
@@ -1053,27 +835,29 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
 		}
 	}
 
-	return false;
+	return false;*/
 }
 
-float MainWindow::getSlabVoxelValue(int x, int y, int planeType)
+
+float MainWindow::getSlabVoxelValue(int x, int y, int planetype)
 {
+	/*
 //    int width = slabImages[planeType].width();
-	int height = slabplanes[planeType].height();
+	int height = slabplanes[planetype].height();
 	float val;
 
-	switch (planeType)
+	switch (planetype)
 	{
 	case CORONAL:
-		val = slab->getImgVal(x, sliceNum[planeType], height - y);
+		val = slab->getImgVal(x, sliceNum[planetype], height - y);
 		break;
 
 	case SAGITTAL:
-		val = slab->getImgVal(sliceNum[planeType], x, height - y);
+		val = slab->getImgVal(sliceNum[planetype], x, height - y);
 		break;
 
 	case AXIAL:
-		val = slab->getImgVal(x, height - y, sliceNum[planeType]);
+		val = slab->getImgVal(x, height - y, sliceNum[planetype]);
 		break;
 
 	default:
@@ -1081,10 +865,11 @@ float MainWindow::getSlabVoxelValue(int x, int y, int planeType)
 	}
 
 	return val;
+	*/
 }
 
 void MainWindow::changeVoxelValues(float value, bool on)
-{
+{/*
 	if (value != -1)   // change value only for slab voxel
 	{
 		float temp;
@@ -1112,24 +897,13 @@ void MainWindow::changeVoxelValues(float value, bool on)
 				}
 			}
 		}
-	}
+	}*/
 }
 
 /***** slab mask making (voxel quality check) *****/
 bool MainWindow::loadSlabMask(const QString &fileName)
 {
-	if (mask != NULL)
-		delete mask;
-
-	if (slab != NULL)
-	{
-//		delete slab;
-	}
-
-	mask = new Image(fileName, 'r');
-
-	if (overlay == false)
-		overlay = true;
+	mask->open(fileName, 'r');
 
 	drawPlane(CORONAL);
 	drawPlane(SAGITTAL);
@@ -1320,17 +1094,13 @@ void MainWindow::calMajorButtonClicked()
 		lcmInfo->append(QString::fromStdString(text));
 	}
 }
-/*
-void MainWindow::calPVC(vec3df gmvol, vec3df wmvol, vec3df csfvol)
-{
 
-}
-*/
-vec3df MainWindow::transformation3d(vec3df imagevol, float coordAP, float coordFH, float coordRL, float angleAP, float angleFH, float angleRL, float t1VoxSizeX, float t1VoxSizeY, float t1VoxSizeZ)
+Image* MainWindow::transformation3d(Image* imagevol, float coordAP, float coordFH, float coordRL, float angleAP, float angleFH, float angleRL, float t1VoxSizeX, float t1VoxSizeY, float t1VoxSizeZ)
 {
-	const size_t dimX = imagevol.size();
-	const size_t dimY = imagevol[0].size();
-	const size_t dimZ = imagevol[0][0].size();
+	const size_t dimX = imagevol->dx();
+	const size_t dimY = imagevol->dy();
+	const size_t dimZ = imagevol->dz();
+	// transformation vector calculation
 	Affine3f rotRL = Affine3f(AngleAxisf(deg2rad(angleRL), Vector3f(-1, 0, 0))); // sagittal - clockwise
 	Vector3f u1 = rotRL * Vector3f(0, 1, 0);
 	Affine3f rotAP = Affine3f(AngleAxisf(deg2rad(angleAP), u1));	// coronal - clockwise
@@ -1343,14 +1113,14 @@ vec3df MainWindow::transformation3d(vec3df imagevol, float coordAP, float coordF
 	// 2nd param++ ==> slab moves to front
 	// 3rd param++ ==> slab moves to up
 	Affine3f t3(Translation3f(Vector3f(coordRL / t1VoxSizeX, -coordAP / t1VoxSizeY, coordFH / t1VoxSizeZ)));
-	// scaling (for anisotropy images)
-	//Matrix4f m = (t3 * t2 * Scaling(t1VoxSizeX, t1VoxSizeY, t1VoxSizeZ) * r * Scaling(1/t1VoxSizeX, 1/t1VoxSizeY, 1/t1VoxSizeZ) * t1 ).matrix();
 	Matrix4f m = (t3 * t2 * r * t1).matrix();
 	Matrix4f m_inv = m.inverse();
-	vec3df rotvol;
-	rotvol = imagevol;
-	MatrixXf imgcoord(4, 1);
-	MatrixXf newcoord(4, 1);
+
+	Image *rotvol = new Image();
+	rotvol->setBlankImgvol(dimX, dimY, dimZ);
+
+	QTime myTimer;
+	myTimer.start();
 
 	for (size_t i = 0; i < dimX; i++)
 	{
@@ -1358,8 +1128,8 @@ vec3df MainWindow::transformation3d(vec3df imagevol, float coordAP, float coordF
 		{
 			for (size_t k = 0; k < dimZ; k++)
 			{
-				newcoord << i, j, k, 1;
-				imgcoord = m_inv * newcoord;
+				Vector4f newcoord(i, j, k, 1);
+				Vector4f imgcoord = m_inv * newcoord;
 
 				if ((imgcoord(0) >= 0) && (imgcoord(1) >= 0) && (imgcoord(2) >= 0))
 				{
@@ -1368,16 +1138,19 @@ vec3df MainWindow::transformation3d(vec3df imagevol, float coordAP, float coordF
 					size_t z = round(imgcoord(2));
 
 					if ((x < dimX) && (y < dimY) && (z < dimZ))
-						rotvol[i][j][k] = imagevol[x][y][z];
+						rotvol->setImgVal(i, j, k, imagevol->getImgVal(x, y, z));
 				}
 				else
-					rotvol[i][j][k] = 0;
+					rotvol->setImgVal(i, j, k, 0);
 			}
 		}
 	}
+	int nMilliseconds = myTimer.elapsed();
+	print("[Time] " + QString::number(nMilliseconds) + "ms");
 
 	return rotvol;
 }
+
 float MainWindow::deg2rad(float degree)
 {
 	return degree * M_PI / 180;
@@ -1385,12 +1158,6 @@ float MainWindow::deg2rad(float degree)
 
 void MainWindow::makeSlab()
 {
-	/*
-		code for reference
-		sliceNumMax[SAGITTAL] = img->nx(); LR
-		sliceNumMax[CORONAL] = img->ny(); AP
-		sliceNumMax[AXIAL] = img->nz(); FH
-	*/
 	float t1VoxSizeX = T1->sx();
 	float t1VoxSizeY = T1->sy();
 	float t1VoxSizeZ = T1->sz();
@@ -1398,36 +1165,17 @@ void MainWindow::makeSlab()
 	float defSlabSizeY = mrsiVoxSizeY * mrsiVoxNumY / t1VoxSizeY;
 	float defSlabSizeZ = mrsiVoxSizeZ * mrsiVoxNumZ / t1VoxSizeZ;
 	int maxLength = round(pow(pow(defSlabSizeX, 2) + pow(defSlabSizeY, 2) + pow(defSlabSizeZ, 2), 0.5));
-	// slab image (full size)
-	vec3df imagevol;
-	imagevol.resize(maxLength);
-
-	for (int i = 0; i < maxLength; i++)
-	{
-		imagevol[i].resize(maxLength);
-
-		for (int j = 0; j < maxLength; j++)
-			imagevol[i][j].resize(maxLength);
-	}
-
-	// fill default
 	int slabMid = maxLength / 2;
 	int slabX = round(defSlabSizeX / 2);
 	int slabY = round(defSlabSizeY / 2);
 	int slabZ = round(defSlabSizeZ / 2);
-
-	for (int i = 0; i < maxLength; i++)
-	{
-		for (int j = 0; j < maxLength; j++)
-		{
-			for (int k = 0; k < maxLength; k++)
-				imagevol[i][j][k] = 0;
-		}
-	}
-
 	int slabdiffX = slabMid - slabX;
 	int slabdiffY = slabMid - slabY;
 	int slabdiffZ = slabMid - slabZ;
+
+	Image *imagevol = new Image();
+	imagevol->setBlankImgvol(maxLength, maxLength, maxLength);
+
 
 	for (int i = slabdiffX; i < slabMid + slabX; i++)
 	{
@@ -1438,28 +1186,23 @@ void MainWindow::makeSlab()
 				int voxNumX = mrsiVoxNumX + 1 - round((i - slabdiffX) * t1VoxSizeX / mrsiVoxSizeX + 0.5); // left to right
 				int voxNumY = mrsiVoxNumY + 1 - round((j - slabdiffY) * t1VoxSizeY / mrsiVoxSizeY + 0.5);
 				int voxNumZ = round((k - slabdiffZ) * t1VoxSizeZ / mrsiVoxSizeZ + 0.5); // bottom to top
-				imagevol[i][j][k] = voxNumX + (voxNumY - 1) * mrsiVoxNumX + (voxNumZ - 1) * mrsiVoxNumX * mrsiVoxNumY;
+				int value = voxNumX + (voxNumY - 1) * mrsiVoxNumX + (voxNumZ - 1) * mrsiVoxNumX * mrsiVoxNumY;
+				imagevol->setImgVal(i, j, k, value);
 			}
 		}
 	}
 
 	// rotate and translate
 	DicomInfo diff = slab->getDCMInfo() - T1->getDCMInfo();
-	imagevol = transformation3d(imagevol, diff.coordAP, diff.coordFH, diff.coordRL, diff.angleAP, diff.angleFH, diff.angleRL, t1VoxSizeX, t1VoxSizeY, t1VoxSizeZ);
+	Image *imagevol2 = transformation3d(imagevol, diff.coordAP, diff.coordFH, diff.coordRL, diff.angleAP, diff.angleFH, diff.angleRL, t1VoxSizeX, t1VoxSizeY, t1VoxSizeZ);
+	delete imagevol;
+
 	// slab image (full size)
-	vec3df slabvol;
+	Image *slabvol = new Image();
 	const size_t dimX = T1->dx();
 	const size_t dimY = T1->dy();
 	const size_t dimZ = T1->dz();
-	slabvol.resize(dimX);
-
-	for (size_t i = 0; i < dimX; i++)
-	{
-		slabvol[i].resize(dimY);
-
-		for (size_t j = 0; j < dimY; j++)
-			slabvol[i][j].resize(dimZ);
-	}
+	slabvol->setBlankImgvol(dimX, dimY, dimZ);
 
 	// crop
 	int diffX = slabMid - round(dimX / 2);
@@ -1473,18 +1216,19 @@ void MainWindow::makeSlab()
 			for (int k = 0; k < (int)dimZ; k++)
 			{
 				if ((i + diffX) < 0 || (j + diffY) < 0 || (k + diffZ) < 0 || (i + diffX) >= maxLength || (j + diffY) >= maxLength || (k + diffZ) >= maxLength)
-					slabvol[i][j][k] = 0;
+					slabvol->setImgVal(i, j, k, 0);
 				else
-					slabvol[i][j][k] = imagevol[i + diffX][j + diffY][k + diffZ];
+					slabvol->setImgVal(i, j, k, imagevol2->getImgVal(i + diffX, j + diffY, k + diffZ));
 			}
 		}
 	}
 
-	imagevol = vec3df();
+	delete imagevol2;
 	print("Creating slab image is complete.");
 	QString filename = getSlabFileName();
-	T1->saveImageFile(filename, slabvol, T1->getFileName());
+	slabvol->saveImageFile(filename, T1->getFileName());
 	print("Saving slab image is complete. (" + filename + ")");
+
 }
 
 QString MainWindow::getSlabFileName()

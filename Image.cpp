@@ -7,7 +7,19 @@ Image::Image()
 
 Image::Image(QString filename, char rw)
 {
-	img = new NiftiImage();
+	open(filename, rw);
+}
+
+
+Image::~Image()
+{
+//    img->close();
+	delete img;
+}
+
+void Image::open(QString filename, char rw)
+{
+//	img = new NiftiImage();
 	this->filename = filename;
 	if (isFileExists())
 	{
@@ -21,13 +33,8 @@ Image::Image(QString filename, char rw)
 		imgvol = img->readAllVolumes<float>();
 		img->close();
 		setDefaultIntensity();
+		available = true;
 	}
-}
-
-Image::~Image()
-{
-//    img->close();
-	delete img;
 }
 
 void Image::setIntensity(double value)
@@ -108,40 +115,88 @@ DicomInfo Image::getDCMInfo()
 	return dcminfo;
 }
 
-void Image::saveImageFile(QString filename, vec3df array3D, QString reffilename)
+void Image::saveImageFile(QString filename, QString reffilename)
 {
-	NiftiImage temp;
-	temp.open(reffilename.toStdString(), 'r');
-	float *array1D = temp.readAllVolumes<float>();
-
-	size_t dimX = (array3D).size();
-	size_t dimY = (array3D)[0].size();
-	size_t dimZ = (array3D)[0][0].size();
-
-	for (size_t i = 0; i < dimX; i++)
-	{
-		for (size_t j = 0; j < dimY; j++)
-		{
-			for (size_t k = 0; k < dimZ; k++)
-				array1D[i + j * dimX + k * dimX * dimY] =  (array3D)[i][j][k];
-		}
-	}
-
-	temp.close();
-	temp.open(filename.toStdString(), 'w');
-	temp.writeAllVolumes<float>(array1D);
-	temp.close();
-	delete array1D;
-}
-
-float *Image::arr3Dto1D(vec3df array3D)
-{
-	float *array1D;
-	return array1D;
+	img->open(reffilename.toStdString(), 'r');
+	img->close();
+	img->open(filename.toStdString(), 'w');
+	img->writeAllVolumes<float>(imgvol);
 }
 
 inline bool Image::isFileExists()
 {
 	struct stat buffer;
 	return (stat (filename.toStdString().c_str(), &buffer) == 0);
+}
+
+bool Image::isAvailable()
+{
+	return available;
+}
+
+QImage Image::getPlaneImage(int planetype, int slicenum)
+{
+	QImage planeimage;
+	int width = 0;
+	int height = 0;
+	int width_act = 0;	// need for anisotropy images
+	int height_act = 0;	// need for anisotropy images
+
+	switch (planetype)
+	{
+	case CORONAL:	width = dx();	height = dz();	width_act = width * sx();	height_act = height * sz();	break;
+	case SAGITTAL:	width = dy();	height = dz();	width_act = width * sy();	height_act = height * sz();	break;
+	case AXIAL:		width = dx();	height = dy();	width_act = width * sx();	height_act = height * sy();	break;
+	}
+
+	planeimage = QImage(width, height, QImage::Format_ARGB32);
+	planeimage.fill(qRgba(0, 0, 0, 255));
+
+	for (int i = 0; i < width; i++)
+	{
+		for (int j = 0; j < height; j++)
+		{
+			float value;
+			switch (planetype)
+			{
+			case CORONAL:	value = getImgVal(i, slicenum, j);	break;
+			case SAGITTAL:	value = getImgVal(slicenum, i, j);	break;
+			case AXIAL:		value = getImgVal(i, j, slicenum);	break;
+			}
+			QRgb pixval;
+			if (isOverlay())
+			{
+				pixval = qRgba(value * intensity, value * intensity, 0, 255);
+			}
+			else
+			{
+				pixval = qRgba(value * intensity, value * intensity, value * intensity, 255);
+			}
+			planeimage.setPixel(i, height - j - 1, pixval);
+
+		}
+	}
+
+	// need for anisotropy images
+	return planeimage.scaled(width_act, height_act, Qt::IgnoreAspectRatio);
+
+}
+
+void Image::setOverlay(bool isoverlay)
+{
+	overlay = isoverlay;
+}
+
+bool Image::isOverlay()
+{
+	return overlay;
+}
+
+void Image::setBlankImgvol(size_t x, size_t y, size_t z)
+{
+	dimX = x;
+	dimY = y;
+	dimZ = z;
+	size_t n = x * y * z;
+	imgvol = new float[n];
 }
