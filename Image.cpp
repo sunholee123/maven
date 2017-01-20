@@ -119,12 +119,14 @@ DicomInfo Image::getDCMInfo()
 	return dcminfo;
 }
 
-void Image::saveImageFile(QString filename, QString reffilename)
+void Image::saveImageFile(QString filename, Image* refimg)
 {
-	img->open(reffilename.toStdString(), 'r');
+	string reffilename = refimg->getFileName().toStdString();
+	img->open(reffilename, 'r');
 	img->close();
 	img->open(filename.toStdString(), 'w');
 	img->writeAllVolumes<float>(imgvol);
+	img->close();
 }
 
 inline bool Image::isFileExists()

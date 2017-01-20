@@ -67,7 +67,7 @@ public:
 	void setOverlay(bool isoverlay);
 	bool isOverlay();
 
-	void saveImageFile(QString filename, QString reffilename);
+	void saveImageFile(QString filename, Image* refimg);
 
 private:
     NiftiImage *img = NULL;

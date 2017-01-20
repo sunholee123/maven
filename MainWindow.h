@@ -7,35 +7,17 @@
 #include <QMouseEvent>
 #include <vector>
 
-//#include "NiftiImage.h"
 #include <Eigen/Geometry>
 //#include <dcmtk/dcmdata/dctk.h>
 
 #include "Image.h"
+#include "LCModelData.h"
 
 #define t1image 0
 #define slabimage 1
 #define maskimage 2
 
 using namespace Eigen;
-
-struct Metabolite
-{
-	string name;
-	float conc;
-	int sd;
-	float ratio;
-	bool qc;
-};
-
-struct TableInfo
-{
-	map<string, Metabolite> metaInfo;
-	float fwhm;
-	int snr;
-	float pvc;
-	bool isAvailable = false;
-};
 
 struct coord
 {
@@ -65,8 +47,8 @@ private slots:
 	void valueUpdateCor(int value);
 	void valueUpdateSag(int value);
 	void valueUpdateAxi(int value);
-	void openSlabMask();
-	void makeSlabMask();
+	void openMask();
+	void makeMaskFromLCM();
 	void valueUpdateIntensity(int value);
 	void updateMetaChecked(QAbstractButton*);
 	void calAvgButtonClicked();
@@ -113,17 +95,7 @@ private:
 	Sint16 mrsiVoxNumY;
 	Sint16 mrsiVoxNumZ;
 
-	bool loadSlabImg(const QString &);
-
 	// LCM info
-	TableInfo ***tables = NULL;
-	QStringList metaList;
-
-	bool loadLCMInfo(QString dir);
-	TableInfo parseTable(string filename);
-	void presentLCMInfo();
-	void saveLCMData();
-	void loadLCMData();
 	QString getLCMFileName();
 	float selectedVoxel = 0;
 
@@ -136,10 +108,11 @@ private:
 	float getSlabVoxelValue(int x, int y, int planeType);
 	void changeVoxelValues(float value, bool on);
 
-	bool loadSlabMask(const QString &);
-	void voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc);
-	void saveSlabMask(string metabolite);
-	QString getMaskFileName(string metabolite);
+	bool loadMaskImg(const QString &);
+	void voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc, bool pvc);
+	void makeMask(string metabolite, bool pvc);
+	QString getMaskFileName(string metabolite, int sd, float fwhm, int snr, int conc, bool pvc);
+
 
 	// statistics
 	QStringList selMetaList;
@@ -148,8 +121,7 @@ private:
 	// Slab
 	void makeSlab();
 	QString getSlabFileName();
-
-	// Slab - transformation
+	bool loadSlabImg(const QString &);
 	Image* transformation3d(Image* imagevol, float coordAP, float coordFH, float coordRL, float angleAP, float angleFH, float angleRL, float t1VoxSizeX, float t1VoxSizeY, float t1VoxSizeZ);
 
 	float deg2rad(float degree);
@@ -171,6 +143,13 @@ private:
 
 	inline bool isFileExists(QString filename);
 	void drawPlaneAll();
+
+	// LCModel
+	LCModelData *lcm = NULL;
+	void presentLCMInfo();
+	void saveLCMData();
+	void loadLCMData();
+	bool loadLCMInfo(QString dir);
 
 };
 

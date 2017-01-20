@@ -1,11 +1,5 @@
 #include "MainWindow.h"
 
-/*
-Future work
-reorientation
-*/
-
-
 MainWindow::MainWindow()
 {
 	// main widget
@@ -91,7 +85,8 @@ MainWindow::~MainWindow()
 // not fully implemented : problem with height, add buttons etc.
 void MainWindow::setLCMLayout()
 {
-	if (metaList.isEmpty())
+//	if (lcm->metaList.isEmpty())
+	if (lcm == NULL)
 	{
 		lcmInfoBox = new QGroupBox(tr("MRSI Chemical Information"));
 		lcmInfoBox->setAlignment(Qt::AlignHCenter);
@@ -115,13 +110,13 @@ void MainWindow::setLCMLayout()
 		group->setExclusive(false);
 		int j = 0;
 
-		for (int i = 0; i < metaList.size(); i++)
+		for (int i = 0; i < lcm->metaList.size(); i++)
 		{
 			if (i % 2 == 0)
 				j += 1;
 
 			QCheckBox *metaBox = new QCheckBox();
-			metaBox->setText(metaList[i]);
+			metaBox->setText(lcm->metaList[i]);
 			gbox->addWidget(metaBox, j, i % 2);
 			group->addButton(metaBox);
 		}
@@ -157,13 +152,13 @@ void MainWindow::createActions()
 
 	fileMenu->addAction(tr("Open T1 Image"), this, &MainWindow::openT1);
 	overlaySlabAct = fileMenu->addAction(tr("Overlay Slab"), this, &MainWindow::openSlab);
-	openSlabMaskAct = fileMenu->addAction(tr("Overlay Slab Mask"), this, &MainWindow::openSlabMask);
+	openSlabMaskAct = fileMenu->addAction(tr("Overlay Slab Mask"), this, &MainWindow::openMask);
 	fileMenu->addAction(tr("Exit"), this, &QWidget::close);
 
 	slabMenu->addAction(tr("Create Slab Image from DICOM Files"), this, &MainWindow::makeSlabFromDicom);
 	slabMenu->addAction(tr("Load LCM Info"), this, &MainWindow::openLCM);
 	slabMenu->addAction(tr("Load FSLVBM Segmented Images"), this, &MainWindow::loadT1Segs);
-	slabMenu->addAction(tr("QC + Create Slab Mask Image"), this, &MainWindow::makeSlabMask);
+	slabMenu->addAction(tr("QC + Create Slab Mask Image"), this, &MainWindow::makeMaskFromLCM);
 	// Some menus and actions are disabled until the T1 image is fully loaded
 	setEnabledT1DepMenus(false);
 	// future work: add help action
@@ -194,8 +189,11 @@ void MainWindow::initImgsAll()
 
 	T1 = new Image();
 	slab = new Image();
-	slab->setOverlay(true);
 	mask = new Image();
+	slab->setOverlay(true);
+	mask->setOverlay(true);
+
+	lcm = new LCModelData();
 }
 
 void MainWindow::openT1()
@@ -211,18 +209,18 @@ void MainWindow::openT1()
 
 		if(isFileExists(getPrefFileName()))	{	readPref();						}
 		if(isFileExists(getSlabFileName()))	{	loadSlabImg(getSlabFileName());	}
-		if(isFileExists(getLCMFileName()))	{	loadLCMData();					}
+		if(isFileExists(getLCMFileName()))
+		{
+			loadLCMData();
+			if (slab->isAvailable())
+				loadT1Segs();
+		}
+
 
 		setSliceNum(T1);
 		setEnabledT1DepMenus(true);
 
 		printLine();
-
-
-	/*
-		if(isFileExists(T1->getFileName()) && slab != NULL)
-			loadT1Segs();
-	*/
 	}
 }
 
@@ -236,12 +234,12 @@ void MainWindow::openSlab()
 	printLine();
 }
 
-void MainWindow::openSlabMask()
+void MainWindow::openMask()
 {
 	QFileDialog dialog(this, tr("Open File"));
 	dialog.setNameFilter(tr("Nifti files (*.nii.gz *.nii *.hdr)"));
 
-	while (dialog.exec() == QDialog::Accepted && !loadSlabMask(dialog.selectedFiles().first())) {}
+	while (dialog.exec() == QDialog::Accepted && !loadMaskImg(dialog.selectedFiles().first())) {}
 
 	printLine();
 }
@@ -265,12 +263,6 @@ void MainWindow::makeSlabFromDicom()
 
 void MainWindow::loadT1Segs()
 {
-	// get T1 directory name
-	QFileInfo f(T1->getFileName());
-	// load gm, wm, csf images
-	QString gmFileName = f.absolutePath() + "/struc/" + f.baseName() + "_struc_GM.nii.gz";
-	QString wmFileName = f.absolutePath() + "/struc/" + f.baseName() + "_struc_brain_pve_2.nii.gz";
-	QString csfFileName = f.absolutePath() + "/struc/" + f.baseName() + "_struc_brain_pve_0.nii.gz";
 	// initialize gm, wm and csf values
 	struct segvals
 	{
@@ -296,11 +288,20 @@ void MainWindow::loadT1Segs()
 		}
 	}
 
+	QFileInfo f(T1->getFileName());
+	QString filenames[3];
+	// 0: gm, 1: wm, 2: csf
+	filenames[0] = f.absolutePath() + "/struc/" + f.baseName() + "_struc_GM.nii.gz";
+	filenames[1]= f.absolutePath() + "/struc/" + f.baseName() + "_struc_brain_pve_2.nii.gz";
+	filenames[2] = f.absolutePath() + "/struc/" + f.baseName() + "_struc_brain_pve_0.nii.gz";
+
 	// get segmentation information by voxel
 	const size_t dimX = T1->dx();
 	const size_t dimY = T1->dy();
 	const size_t dimZ = T1->dz();
-	Image *gmimg = new Image(gmFileName, 'r');
+	Image tempimg;
+
+	tempimg.open(filenames[0], 'r');
 
 	for (size_t i = 0; i < dimX; i++)
 	{
@@ -311,14 +312,12 @@ void MainWindow::loadT1Segs()
 				if (slab->getImgVal(i, j, k) != 0)
 				{
 					coord abc = n2abc(slab->getImgVal(i, j, k));
-					s[abc.a][abc.b][abc.c].gm += gmimg->getImgVal(i, j, k);
+					s[abc.a][abc.b][abc.c].gm  += tempimg.getImgVal(i, j, k);
 				}
 			}
 		}
 	}
-
-	delete gmimg;
-	Image *wmimg = new Image(wmFileName, 'r');
+	tempimg.open(filenames[1], 'r');
 
 	for (size_t i = 0; i < dimX; i++)
 	{
@@ -329,14 +328,12 @@ void MainWindow::loadT1Segs()
 				if (slab->getImgVal(i, j, k) != 0)
 				{
 					coord abc = n2abc(slab->getImgVal(i, j, k));
-					s[abc.a][abc.b][abc.c].wm += wmimg->getImgVal(i, j, k);
+					s[abc.a][abc.b][abc.c].wm  += tempimg.getImgVal(i, j, k);
 				}
 			}
 		}
 	}
-
-	delete wmimg;
-	Image *csfimg = new Image(csfFileName, 'r');
+	tempimg.open(filenames[2], 'r');
 
 	for (size_t i = 0; i < dimX; i++)
 	{
@@ -347,16 +344,15 @@ void MainWindow::loadT1Segs()
 				if (slab->getImgVal(i, j, k) != 0)
 				{
 					coord abc = n2abc(slab->getImgVal(i, j, k));
-					s[abc.a][abc.b][abc.c].csf += csfimg->getImgVal(i, j, k);
+					s[abc.a][abc.b][abc.c].csf += tempimg.getImgVal(i, j, k);
 				}
 			}
 		}
 	}
 
-	delete csfimg;
-	print("[Load] GM (" + gmFileName + ")");
-	print("[Load] WM (" + wmFileName + ")");
-	print("[Load] CSF (" + csfFileName + ")");
+	print("[Load] GM  (" + filenames[0] + ")");
+	print("[Load] WM  (" + filenames[1] + ")");
+	print("[Load] CSF (" + filenames[2] + ")");
 
 	// calculate PVC value automatically
 	// calculate volume fractions
@@ -370,18 +366,19 @@ void MainWindow::loadT1Segs()
 			{
 				float total = s[i][j][k].gm + s[i][j][k].wm + s[i][j][k].csf;
 
-				// qc: pvc = 0 if an mrsi voxel is not included in the brain
-				if (total < (mrsiVoxVolume * 0.8))	// 80%
+				// QC: check MRSI voxels that are not included in the brain (threshold: 80%)
+				if (total < (mrsiVoxVolume * 0.8))
 				{
-					tables[i][j][k].isAvailable = false;
-					continue;
+					lcm->tables[i][j][k].isAvailable = false;
 				}
-
-				float f_gm = s[i][j][k].gm / total;
-				float f_wm = s[i][j][k].wm / total;
-				float f_csf = s[i][j][k].csf / total;
-				// calculate partial volume corection values
-				tables[i][j][k].pvc = (43300 * f_gm + 35880 * f_wm + 55556 * f_csf) / ((1 - f_csf) * 35880);
+				else
+				{
+					float f_gm = s[i][j][k].gm / total;
+					float f_wm = s[i][j][k].wm / total;
+					float f_csf = s[i][j][k].csf / total;
+					// calculate partial volume corection values
+					lcm->tables[i][j][k].pvc = (43300 * f_gm + 35880 * f_wm + 55556 * f_csf) / ((1 - f_csf) * 35880);
+				}
 			}
 		}
 	}
@@ -390,29 +387,39 @@ void MainWindow::loadT1Segs()
 	printLine();
 }
 
-void MainWindow::makeSlabMask()
+void MainWindow::makeMaskFromLCM()
 {
 	// future work: if no LCM data loaded, then popup message
 	QDialog dialog(this);
 	QFormLayout form(&dialog);
 	form.addRow(new QLabel("<center>Values for Quality Check</center>"));
+
 	QComboBox *metabolites = new QComboBox();
-	metabolites->addItems(metaList);
+	metabolites->addItems(lcm->metaList);
 	form.addRow("Metabolite", metabolites);
+
 	QLineEdit *sdInput = new QLineEdit(&dialog);
 	sdInput->setValidator(new QIntValidator(0, 100, this));
 	sdInput->setText("20");
 	form.addRow("SD(%)", sdInput);
+
 	QLineEdit *fwhmInput = new QLineEdit(&dialog);
 	fwhmInput->setValidator(new QDoubleValidator(0, 10, 2, this));
 	fwhmInput->setText("0.2");
 	form.addRow("FWHM", fwhmInput);
+
 	QLineEdit *snrInput = new QLineEdit(&dialog);
 	snrInput->setValidator(new QIntValidator(0, 10, this));
-	form.addRow("SNR(optional)", snrInput);
+	form.addRow("SNR (optional)", snrInput);
+
 	QLineEdit *concInput = new QLineEdit(&dialog);
-	snrInput->setValidator(new QIntValidator(0, 10000, this));
-	form.addRow("Conc(optional)", concInput);
+	concInput->setValidator(new QIntValidator(0, 10000, this));
+	form.addRow("Conc (optional)", concInput);
+	//
+	QCheckBox *pvcCheck = new QCheckBox(&dialog);
+	pvcCheck->setChecked(true);
+	form.addRow("PVC (optional)", pvcCheck);
+	//
 	QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, &dialog);
 	form.addRow(&buttonBox);
 	QObject::connect(&buttonBox, SIGNAL(accepted()), &dialog, SLOT(accept()));
@@ -424,7 +431,7 @@ void MainWindow::makeSlabMask()
 		int sd = sdInput->text().toInt();
 		float fwhm = fwhmInput->text().toFloat();
 		int snr = -1;
-		int conc = 20000;
+		int conc = 99999;
 
 		if (!snrInput->text().isEmpty())
 			snr = snrInput->text().toInt();
@@ -432,12 +439,31 @@ void MainWindow::makeSlabMask()
 		if (!concInput->text().isEmpty())
 			conc = concInput->text().toInt();
 
-		voxelQualityCheck(metabolite, sd, fwhm, snr, conc);
-		saveSlabMask(metabolite);
-		loadSlabMask(getMaskFileName(metabolite));
+		bool pvc = pvcCheck->isChecked();
+
+		voxelQualityCheck(metabolite, sd, fwhm, snr, conc, pvc);
+		QString maskfilename = getMaskFileName(metabolite, sd, fwhm, snr, conc, pvc);
+		makeMask(metabolite, pvc);
+		mask->saveImageFile(maskfilename, T1);
+		loadMaskImg(maskfilename);
+		print("[Save] Mask image (" + maskfilename + ")");
 	}
 
 	printLine();
+}
+
+
+QString MainWindow::getMaskFileName(string metabolite, int sd, float fwhm, int snr, int conc, bool pvc)
+{
+	QString appendstr;
+	if (snr != -1)		{	appendstr.append("_snr" + QString::number(snr));	}
+	if (conc != 99999)	{	appendstr.append("_conc" + QString::number(conc));	}
+	if (pvc)			{	appendstr.append("_pvc");							}
+
+	return T1->getFileName("_mask_" + QString::fromStdString(metabolite)
+							+ "_sd" + QString::number(sd)
+							+ "_fwhm" + QString::number(fwhm)
+							+ appendstr);
 }
 
 void MainWindow::openLCM()
@@ -461,6 +487,7 @@ void MainWindow::setSliceNum(Image *img)
 	for (int i = 0; i < 3; i++)
 	{
 		sliceSpinBox[i]->setRange(1, maxdim[i]);
+		sliceSpinBox[i]->setValue(1);
 		sliceSpinBox[i]->setValue(maxdim[i] / 2);
 	}
 }
@@ -566,6 +593,18 @@ bool MainWindow::loadSlabImg(const QString &fileName)
 	return true;
 }
 
+
+bool MainWindow::loadMaskImg(const QString &fileName)
+{
+	delete mask;
+	mask = new Image();
+	mask->open(fileName, 'r');
+	mask->setOverlay(true);
+	print("[Load] Mask image (" + fileName + ")");
+	drawPlaneAll();
+	return true;
+}
+
 void MainWindow::drawPlaneAll()
 {
 	drawPlane(CORONAL);
@@ -576,123 +615,20 @@ void MainWindow::drawPlaneAll()
 /***** load LCM info *****/
 bool MainWindow::loadLCMInfo(QString dir)
 {
-	QDirIterator it(dir, QStringList() << "*.table", QDir::Files, QDirIterator::Subdirectories);
-
-	if (!it.hasNext())
-	{
-		QMessageBox::critical(this, "Error!", "Can't find *.table files.", QMessageBox::Ok);
-		return false;
-	}
-	if (tables != NULL)
-	{
-		delete tables;
-	}
-	tables = new TableInfo **[mrsiVoxNumZ];
-
-	for (int i = 0; i < mrsiVoxNumZ; i++)
-	{
-		tables[i] = new TableInfo*[mrsiVoxNumY];
-
-		for (int j = 0; j < mrsiVoxNumY; j++)
-			tables[i][j] = new TableInfo[mrsiVoxNumX];
-	}
-
-	int filecount = 0;
-	while (it.hasNext())
-	{
-		it.next();
-		string filename = it.fileName().toStdString();
-		string filepath = it.filePath().toStdString();	// path + name
-		size_t index1 = filename.find("_");
-		size_t index2 = filename.find("-");
-		size_t index3 = filename.find(".");
-		int x = filename.at(index1 - 1) - '0';
-		int y = stoi(filename.substr(index1 + 1, index2 - 1));
-		int z = stoi(filename.substr(index2 + 1, index3 - 1));
-		tables[x - 1][y - 1][z - 1] = parseTable(filepath);
-		filecount++;
-	}
-
+	lcm->setLCMInfo(dir, mrsiVoxNumX, mrsiVoxNumY, mrsiVoxNumZ);
 	setLCMLayout();
-	print("[Load] LCModel table files (" + dir + ", " + QString::number(filecount) + " files)");
+//	print("[Load] LCModel table files (" + dir + ", " + QString::number(filecount) + " files)");
+	print("[Load] LCModel table files (" + dir);
 	return true;
 }
 
-TableInfo MainWindow::parseTable(string filename)
-{
-	TableInfo table;
-	table.isAvailable = false;
-	char line[255];
-	ifstream myfile(filename);
-
-	if (myfile.is_open())
-	{
-		char *token = NULL;
-		char s[] = " \t";
-
-		while (myfile.getline(line, 255))
-		{
-			if (strstr(line, "Conc."))
-			{
-				while (myfile.getline(line, 255))
-				{
-					Metabolite metainfo;
-					token = strtok(line, s);
-
-					if (token == NULL)	// the last of metabolite parts
-						break;
-
-					metainfo.conc = stof(token);
-					token = strtok(NULL, s);
-					metainfo.sd = stoi(token);
-					token = strtok(NULL, s);
-					// exception check (1.7E+03+MM17, 0.000-MM17,...)
-					QString tempstr = token;
-					QStringList t;
-					t = tempstr.split(QRegExp("[0-9][+-]"));
-
-					if (t.length() == 2)
-					{
-						//metainfo.ratio = stof(t[0].toStdString());
-						metainfo.ratio = stof(tempstr.left(t[0].length() + 1).toStdString());
-						metainfo.name = t[1].toStdString();
-					}
-					else
-					{
-						metainfo.ratio = stof(token);
-						token = strtok(NULL, s);
-						metainfo.name = token;
-					}
-
-					metainfo.qc = true;
-					table.metaInfo[metainfo.name] = metainfo;
-
-					if (metaList.empty() || !metaList.contains(QString::fromStdString(metainfo.name)))   // To-do: call routine just once
-						metaList.push_back(QString::fromStdString(metainfo.name));
-				}
-			}
-			else if (strstr(line, "FWHM"))
-			{
-				token = strtok(line, "FWHM = ");
-				table.fwhm = stof(token);
-				token = strtok(NULL, " ppm    S/N =   ");
-				table.snr = stoi(token);
-				table.isAvailable = true;
-			}
-		}
-
-		myfile.close();
-	}
-
-	return table;
-}
 
 void MainWindow::presentLCMInfo()
 {
 	QString info_str;
 	map<string, Metabolite>::iterator metaPos;
 	coord abc = n2abc(selectedVoxel);
-	TableInfo temp = tables[abc.a][abc.b][abc.c];
+	TableInfo temp = lcm->tables[abc.a][abc.b][abc.c];
 	info_str.append("<qt><style>.mytable{ border-collapse:collapse; }");
 	info_str.append(".mytable th, .mytable td { border:5px solid black; }</style>");
 	info_str.append("<table class=\"mytable\"><tr><th>Metabolite</th><th>Conc.</th><th>%SD</th><th>/Cr</th></tr>");
@@ -706,15 +642,6 @@ void MainWindow::presentLCMInfo()
 		info_str.append(QString::fromStdString(s1 + s2 + s3 + s4));
 	}
 
-	/*
-	for (int i = 0; i < 35; i++) {
-		string s1 = "<tr><td>" + tables[a - 1][b - 1][c - 1].metaInfo[i][3] + "</td>";
-		string s2 = "<td>" + tables[a - 1][b - 1][c - 1].metaInfo[i][0] + "</td>";
-		string s3 = "<td>" + tables[a - 1][b - 1][c - 1].metaInfo[i][1] + "</td>";
-		string s4 = "<td>" + tables[a - 1][b - 1][c - 1].metaInfo[i][2] + "</td></tr>";
-		info_str.append(QString::fromStdString(s1 + s2 + s3 + s4));
-	}
-	*/
 	info_str.append("</table></qt>");
 	lcmInfo->setText(QString::fromStdString("Selected: Slice " + to_string(abc.a + 1) + ", Row " + to_string(abc.b + 1) + ", Col " + to_string(abc.c + 1) + " (" + to_string((int)selectedVoxel) + ")"));
 	lcmInfo->append(info_str);
@@ -734,7 +661,12 @@ void MainWindow::drawPlane(int planetype)
 	{
 		baseimg = T1->getPlaneImage(planetype, slice);
 	}
-	if (slab->isAvailable())
+	if (mask->isAvailable())
+	{
+		overlayimg = mask->getPlaneImage(planetype, slice);
+		baseimg = overlayImage(baseimg, overlayimg);
+	}
+	else if (slab->isAvailable())
 	{
 		overlayimg = slab->getPlaneImage(planetype, slice);
 		baseimg = overlayImage(baseimg, overlayimg);
@@ -850,7 +782,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
 				drawImg2Plane(SAGITTAL);
 				drawImg2Plane(AXIAL);
 
-				if (tables != NULL && selectedVoxel)
+				if (lcm->tables != NULL && selectedVoxel)
 					presentLCMInfo();
 			}
 		}
@@ -921,22 +853,13 @@ void MainWindow::changeVoxelValues(float value, bool on)
 	}*/
 }
 
-/***** slab mask making (voxel quality check) *****/
-bool MainWindow::loadSlabMask(const QString &fileName)
-{
-	mask->open(fileName, 'r');
-
-	drawPlaneAll();
-	return true;
-}
-
-void MainWindow::voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc)
+void MainWindow::voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc, bool pvc)
 {
 	if (sd == -1 || fwhm == -1)
 	{
 		// exception -- not available sd, fwhm values
 	}
-	else if (tables == NULL)
+	else if (lcm->tables == NULL)
 	{
 		// exception -- LCM info did not load
 	}
@@ -948,14 +871,17 @@ void MainWindow::voxelQualityCheck(string metabolite, int sd, float fwhm, int sn
 			{
 				for (int k = 0; k < mrsiVoxNumX; k++)
 				{
-					if (tables[i][j][k].isAvailable)
+					if (lcm->tables[i][j][k].isAvailable)
 					{
 						map<string, Metabolite>::iterator tempPos;
-						tempPos = tables[i][j][k].metaInfo.find(metabolite);
-
-						if (tempPos != tables[i][j][k].metaInfo.end())
+						tempPos = lcm->tables[i][j][k].metaInfo.find(metabolite);
+						if (tempPos != lcm->tables[i][j][k].metaInfo.end())
 						{
-							if (tempPos->second.sd > sd || tempPos->second.conc > conc || tables[i][j][k].fwhm > fwhm || tables[i][j][k].snr < snr)
+							float conc_temp;
+							if (pvc){	conc_temp = tempPos->second.conc * lcm->tables[i][j][k].pvc;	}
+							else	{	conc_temp = tempPos->second.conc;	}
+
+							if (tempPos->second.sd > sd || conc_temp > conc || lcm->tables[i][j][k].fwhm > fwhm || lcm->tables[i][j][k].snr < snr)
 								tempPos->second.qc = false;
 							else
 								tempPos->second.qc = true;
@@ -968,20 +894,13 @@ void MainWindow::voxelQualityCheck(string metabolite, int sd, float fwhm, int sn
 				}
 			}
 		}
-
-		//lcmInfo->append("slab table qc value all changed");
 		print("[Info] All QC values of slab voxels are changed.");
 	}
 }
 
-void MainWindow::saveSlabMask(string metabolite)
+void MainWindow::makeMask(string metabolite, bool pvc)
 {
-	/*
-	if (slab->getImgVal().empty())
-	{
-		lcmInfo->setText("slab is empty, cannot init mask image size");
-	}
-	*/
+	mask->setBlankImgvol(slab->dx(), slab->dy(), slab->dz());
 	for (size_t i = 0; i < slab->dx(); i++)
 	{
 		for (size_t j = 0; j < slab->dy(); j++)
@@ -992,19 +911,19 @@ void MainWindow::saveSlabMask(string metabolite)
 				{
 					coord abc = n2abc(slab->getImgVal(i, j, k));
 
-					if (tables[abc.a][abc.b][abc.c].fwhm == -1)
+					if (lcm->tables[abc.a][abc.b][abc.c].fwhm == -1)
 						mask->setImgVal(i, j, k, 0);
 					else
 					{
-						map<string, Metabolite>::iterator tempPos = tables[abc.a][abc.b][abc.c].metaInfo.find(metabolite);
+						map<string, Metabolite>::iterator tempPos = lcm->tables[abc.a][abc.b][abc.c].metaInfo.find(metabolite);
 
-						if (tempPos != tables[abc.a][abc.b][abc.c].metaInfo.end())
+						if (tempPos != lcm->tables[abc.a][abc.b][abc.c].metaInfo.end())
 						{
-							if (tempPos->second.qc && tables[abc.a][abc.b][abc.c].isAvailable)
+							if (tempPos->second.qc && lcm->tables[abc.a][abc.b][abc.c].isAvailable)
 							{
 								//imagevol[i][j][k] = 1;
-								mask->setImgVal(i, j, k, tempPos->second.conc);
-								//gpeimagevol[i][j][k] = tempPos->second.conc * tables[abc.a][abc.b][abc.c].pvc;
+								if (pvc){	mask->setImgVal(i, j, k, tempPos->second.conc * lcm->tables[abc.a][abc.b][abc.c].pvc);	}
+								else	{	mask->setImgVal(i, j, k, tempPos->second.conc);	}
 							}
 							else
 								mask->setImgVal(i, j, k, 0);
@@ -1014,9 +933,6 @@ void MainWindow::saveSlabMask(string metabolite)
 			}
 		}
 	}
-
-//	mask->saveImageFile(getMaskFileName(metabolite));
-	print("[Save] Slab mask image");
 }
 
 /***** statistics *****/
@@ -1066,17 +982,17 @@ float MainWindow::calAvgConc(string metabolite)
 		{
 			for (int k = 0; k < mrsiVoxNumX; k++)
 			{
-				if (tables[i][j][k].isAvailable)
+				if (lcm->tables[i][j][k].isAvailable)
 				{
 					map<string, Metabolite>::iterator tempPos;
-					tempPos = tables[i][j][k].metaInfo.find(metabolite);
+					tempPos = lcm->tables[i][j][k].metaInfo.find(metabolite);
 
-					if (tempPos != tables[i][j][k].metaInfo.end())
+					if (tempPos != lcm->tables[i][j][k].metaInfo.end())
 					{
 						if (tempPos->second.qc)
 						{
 							count++;
-							sum += tempPos->second.conc * tables[i][j][k].pvc;
+							sum += tempPos->second.conc * lcm->tables[i][j][k].pvc;
 						}
 					}
 				}
@@ -1106,8 +1022,11 @@ void MainWindow::calMajorButtonClicked()
 
 	for (int i = 0; i < majorList.size(); i++)
 	{
+		////
+		bool pvc = true;
+		////
 		string metabolite = majorList[i].toStdString();
-		voxelQualityCheck(metabolite, sd, fwhm, snr, conc);
+		voxelQualityCheck(metabolite, sd, fwhm, snr, conc, pvc);
 		float avg = calAvgConc(metabolite);
 		string text = metabolite + ": " + std::to_string(avg) + "\n";
 		lcmInfo->append(QString::fromStdString(text));
@@ -1245,7 +1164,7 @@ void MainWindow::makeSlab()
 	delete imagevol2;
 	print("[Info] Slab image is created.");
 	QString filename = getSlabFileName();
-	slabvol->saveImageFile(filename, T1->getFileName());
+	slabvol->saveImageFile(filename, T1);
 	delete slabvol;
 	print("[Save] Slab image (" + filename + ")");
 
@@ -1268,10 +1187,6 @@ void MainWindow::saveLCMData()
 
 	if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
 	{
-		/*
-		   QMessageBox::StandardButton msg;
-		   msg = QMessageBox::critical(this, "Error!", "LCM File Creation Failed.", QMessageBox::Ok);
-		   */
 		QMessageBox::critical(this, "Error!", "LCM File Creation Failed.", QMessageBox::Ok);
 		return;
 	}
@@ -1287,12 +1202,12 @@ void MainWindow::saveLCMData()
 				// need to optimize?
 				out << (i + 1) << "\t" << (j + 1) << "\t" << (k + 1) << "\t";
 
-				if (tables[i][j][k].isAvailable)
+				if (lcm->tables[i][j][k].isAvailable)
 				{
 					string str = "";
 					map<string, Metabolite>::iterator metaPos;
 
-					for (metaPos = tables[i][j][k].metaInfo.begin(); metaPos != tables[i][j][k].metaInfo.end(); metaPos++)
+					for (metaPos = lcm->tables[i][j][k].metaInfo.begin(); metaPos != lcm->tables[i][j][k].metaInfo.end(); metaPos++)
 					{
 						out << QString::fromStdString(metaPos->second.name) << "\t"
 							<< metaPos->second.conc << "\t"
@@ -1300,7 +1215,7 @@ void MainWindow::saveLCMData()
 							<< metaPos->second.ratio << "\t";
 					}
 
-					out << tables[i][j][k].fwhm << "\t" << tables[i][j][k].snr << "\n";
+					out << lcm->tables[i][j][k].fwhm << "\t" << lcm->tables[i][j][k].snr << "\n";
 				}
 				else
 					out << "-1\n";
@@ -1324,16 +1239,16 @@ void MainWindow::loadLCMData()
 
 	QTextStream in(&file);
 
-	if (tables == NULL)
+	if (lcm->tables == NULL)
 	{
-		tables = new TableInfo **[mrsiVoxNumZ];
+		lcm->tables = new TableInfo **[mrsiVoxNumZ];
 
 		for (int i = 0; i < mrsiVoxNumZ; i++)
 		{
-			tables[i] = new TableInfo*[mrsiVoxNumY];
+			lcm->tables[i] = new TableInfo*[mrsiVoxNumY];
 
 			for (int j = 0; j < mrsiVoxNumY; j++)
-				tables[i][j] = new TableInfo[mrsiVoxNumX];
+				lcm->tables[i][j] = new TableInfo[mrsiVoxNumX];
 		}
 	}
 
@@ -1348,10 +1263,10 @@ void MainWindow::loadLCMData()
 		c = tokens[2].toInt() - 1;
 
 		if (tokens[3] == "-1")
-			tables[a][b][c].isAvailable = false;
+			lcm->tables[a][b][c].isAvailable = false;
 		else
 		{
-			tables[a][b][c].isAvailable = true;
+			lcm->tables[a][b][c].isAvailable = true;
 			int tokenLen = tokens.length();
 			int metaSize = (tokenLen - 3 - 2) / 4;
 
@@ -1363,14 +1278,14 @@ void MainWindow::loadLCMData()
 				metainfo.sd = tokens[5 + i * 4].toInt();
 				metainfo.ratio = tokens[6 + i * 4].toFloat();
 				metainfo.qc = true;
-				tables[a][b][c].metaInfo[metainfo.name] = metainfo;
+				lcm->tables[a][b][c].metaInfo[metainfo.name] = metainfo;
 
-				if (metaList.empty() || !metaList.contains(QString::fromStdString(metainfo.name)))   // To-do: call routine just once
-					metaList.push_back(QString::fromStdString(metainfo.name));
+				if (lcm->metaList.empty() || !lcm->metaList.contains(QString::fromStdString(metainfo.name)))   // To-do: call routine just once
+					lcm->metaList.push_back(QString::fromStdString(metainfo.name));
 			}
 
-			tables[a][b][c].fwhm = tokens[tokenLen - 2].toFloat();
-			tables[a][b][c].snr = tokens[tokenLen - 1].toInt();
+			lcm->tables[a][b][c].fwhm = tokens[tokenLen - 2].toFloat();
+			lcm->tables[a][b][c].snr = tokens[tokenLen - 1].toInt();
 		}
 	}
 
@@ -1383,13 +1298,11 @@ void MainWindow::loadLCMData()
 QString MainWindow::getSlabFileName()	{	return T1->getFileName("_slab");				}
 QString MainWindow::getLCMFileName()	{	return T1->getFileBaseName() + ".lcm";			}
 QString MainWindow::getPrefFileName()	{	return T1->getFilePath() + "/maven_info.txt";	}
-QString MainWindow::getMaskFileName(string metabolite)
-{
-	return T1->getFileName("_mask_"+ QString::fromStdString(metabolite));
-}
 
 void MainWindow::print(QString str)
 {
+	str.replace("[", "<font color='blue'>[");
+	str.replace("]", "]</font>");
 	outputWindow->append(str);
 }
 
