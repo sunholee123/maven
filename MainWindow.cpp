@@ -77,11 +77,6 @@ MainWindow::MainWindow()
 	setLCMLayout();
 	mainLayout->addLayout(viewerLayout);
 	mainLayout->addLayout(lcmLayout);
-
-	T1 = new Image();
-	slab = new Image();
-	slab->setOverlay(true);
-	mask = new Image();
 }
 
 MainWindow::~MainWindow()
@@ -182,15 +177,25 @@ void MainWindow::about()
 	QMessageBox::about(this, tr("About"), tr("MAVEN: MRSI Analysis and Visualization ENvironment"));
 }
 
-void MainWindow::initAll()
+void MainWindow::initImgsAll()
 {
-	if(isFileExists(getPrefFileName()))	{	readPref();						}
-	if(isFileExists(getSlabFileName()))	{	loadSlab(getSlabFileName());	}
-	if(isFileExists(getLCMFileName()))	{	readLCMData();					}
-/*
-	if(isFileExists(T1->getFileName()) && slab != NULL)
-		loadT1Segs();
-*/
+	if (T1 != NULL)
+	{
+		delete T1;
+	}
+	if (slab != NULL)
+	{
+		delete slab;
+	}
+	if (mask != NULL)
+	{
+		delete mask;
+	}
+
+	T1 = new Image();
+	slab = new Image();
+	slab->setOverlay(true);
+	mask = new Image();
 }
 
 void MainWindow::openT1()
@@ -200,14 +205,24 @@ void MainWindow::openT1()
 	//	while (dialog.exec() == QDialog::Accepted && !loadImage(dialog.selectedFiles().first()), T1) {}
 	if(dialog.exec())
 	{
+		initImgsAll();
 		T1->open(dialog.selectedFiles().first(), 'r');
+		print("[Load] T1 image (" + T1->getFileName() + ")");
+
+		if(isFileExists(getPrefFileName()))	{	readPref();						}
+		if(isFileExists(getSlabFileName()))	{	loadSlabImg(getSlabFileName());	}
+		if(isFileExists(getLCMFileName()))	{	loadLCMData();					}
+
 		setSliceNum(T1);
 		setEnabledT1DepMenus(true);
-		print("Loading T1 image is complete. (" + T1->getFileName() + ")");
-
-		initAll();
 
 		printLine();
+
+
+	/*
+		if(isFileExists(T1->getFileName()) && slab != NULL)
+			loadT1Segs();
+	*/
 	}
 }
 
@@ -215,11 +230,9 @@ void MainWindow::openSlab()
 {
 	QFileDialog dialog(this, tr("Open File"));
 	dialog.setNameFilter(tr("Nifti files (*.nii.gz)"));
-
-//	while (dialog.exec() == QDialog::Accepted && !loadSlab(dialog.selectedFiles().first())) {}
 	dialog.exec();
-	slab->open(dialog.selectedFiles().first(), 'r');
-
+	loadSlabImg(dialog.selectedFiles().first());
+	drawPlaneAll();
 	printLine();
 }
 
@@ -243,10 +256,10 @@ void MainWindow::makeSlabFromDicom()
 		if (findDicomFiles(dialog.selectedFiles().first()))
 		{
 			makeSlab();
-			loadSlab(getSlabFileName());
+			loadSlabImg(getSlabFileName());
 		}
 	}
-
+	drawPlaneAll();
 	printLine();
 }
 
@@ -341,7 +354,10 @@ void MainWindow::loadT1Segs()
 	}
 
 	delete csfimg;
-	print("Loading segmented T1 images is complete. (" + gmFileName + ", " + wmFileName + ", " + csfFileName + ")");
+	print("[Load] GM (" + gmFileName + ")");
+	print("[Load] WM (" + wmFileName + ")");
+	print("[Load] CSF (" + csfFileName + ")");
+
 	// calculate PVC value automatically
 	// calculate volume fractions
 	float mrsiVoxVolume = mrsiVoxSizeX * mrsiVoxSizeY * mrsiVoxSizeZ;
@@ -370,7 +386,7 @@ void MainWindow::loadT1Segs()
 		}
 	}
 
-	print("Partial Volume Correction is complete.");
+	print("[Info] Partial Volume Correction is complete.");
 	printLine();
 }
 
@@ -444,9 +460,8 @@ void MainWindow::setSliceNum(Image *img)
 
 	for (int i = 0; i < 3; i++)
 	{
-		sliceNum[i] = maxdim[i] / 2;
 		sliceSpinBox[i]->setRange(1, maxdim[i]);
-		sliceSpinBox[i]->setValue(sliceNum[i]);
+		sliceSpinBox[i]->setValue(maxdim[i] / 2);
 	}
 }
 
@@ -541,20 +556,26 @@ bool MainWindow::findDicomFiles(QString dir)
 }
 
 /***** load Slab image *****/
-bool MainWindow::loadSlab(const QString &fileName)
+bool MainWindow::loadSlabImg(const QString &fileName)
 {
+	delete slab;
+	slab = new Image();
 	slab->open(fileName, 'r');
+	slab->setOverlay(true);
+	print("[Load] Slab image (" + fileName + ")");
+	return true;
+}
+
+void MainWindow::drawPlaneAll()
+{
 	drawPlane(CORONAL);
 	drawPlane(SAGITTAL);
 	drawPlane(AXIAL);
-	print("Loading slab image is complete. (" + fileName + ")");
-	return true;
 }
 
 /***** load LCM info *****/
 bool MainWindow::loadLCMInfo(QString dir)
 {
-	QStringList filepaths;
 	QDirIterator it(dir, QStringList() << "*.table", QDir::Files, QDirIterator::Subdirectories);
 
 	if (!it.hasNext())
@@ -562,7 +583,10 @@ bool MainWindow::loadLCMInfo(QString dir)
 		QMessageBox::critical(this, "Error!", "Can't find *.table files.", QMessageBox::Ok);
 		return false;
 	}
-
+	if (tables != NULL)
+	{
+		delete tables;
+	}
 	tables = new TableInfo **[mrsiVoxNumZ];
 
 	for (int i = 0; i < mrsiVoxNumZ; i++)
@@ -574,7 +598,6 @@ bool MainWindow::loadLCMInfo(QString dir)
 	}
 
 	int filecount = 0;
-
 	while (it.hasNext())
 	{
 		it.next();
@@ -591,7 +614,7 @@ bool MainWindow::loadLCMInfo(QString dir)
 	}
 
 	setLCMLayout();
-	print("Loading LCModel table files is complete. (" + dir + ", " + QString::number(filecount) + " files)");
+	print("[Load] LCModel table files (" + dir + ", " + QString::number(filecount) + " files)");
 	return true;
 }
 
@@ -759,9 +782,7 @@ void MainWindow::valueUpdateAxi(int value)
 void MainWindow::valueUpdateIntensity(int value)
 {
 	intensity = 300.0 / value;
-	drawPlane(CORONAL);
-	drawPlane(SAGITTAL);
-	drawPlane(AXIAL);
+	drawPlaneAll();
 }
 
 /***** slab voxel picking *****/
@@ -905,9 +926,7 @@ bool MainWindow::loadSlabMask(const QString &fileName)
 {
 	mask->open(fileName, 'r');
 
-	drawPlane(CORONAL);
-	drawPlane(SAGITTAL);
-	drawPlane(AXIAL);
+	drawPlaneAll();
 	return true;
 }
 
@@ -951,7 +970,7 @@ void MainWindow::voxelQualityCheck(string metabolite, int sd, float fwhm, int sn
 		}
 
 		//lcmInfo->append("slab table qc value all changed");
-		print("All QC values of slab voxels are changed.");
+		print("[Info] All QC values of slab voxels are changed.");
 	}
 }
 
@@ -997,7 +1016,7 @@ void MainWindow::saveSlabMask(string metabolite)
 	}
 
 //	mask->saveImageFile(getMaskFileName(metabolite));
-	print("Slab mask image saved.");
+	print("[Save] Slab mask image");
 }
 
 /***** statistics *****/
@@ -1224,24 +1243,14 @@ void MainWindow::makeSlab()
 	}
 
 	delete imagevol2;
-	print("Creating slab image is complete.");
+	print("[Info] Slab image is created.");
 	QString filename = getSlabFileName();
 	slabvol->saveImageFile(filename, T1->getFileName());
-	print("Saving slab image is complete. (" + filename + ")");
+	delete slabvol;
+	print("[Save] Slab image (" + filename + ")");
 
 }
 
-QString MainWindow::getSlabFileName()
-{
-	QFileInfo f(T1->getFileName());
-	return (f.absolutePath() + "/" + f.baseName() + "_slab." + f.completeSuffix());
-}
-
-QString MainWindow::getMaskFileName(string metabolite)
-{
-	QFileInfo f(T1->getFileName());
-	return (f.absolutePath() + "/" + f.baseName() + "_mask_" + QString::fromStdString(metabolite) + "." + f.completeSuffix());
-}
 
 coord MainWindow::n2abc(int n)
 {
@@ -1299,20 +1308,16 @@ void MainWindow::saveLCMData()
 		}
 	}
 
-	print("Saving LCModel data file is complete. (" + filename + ")");
+	print("[Save] LCModel data (" + filename + ")");
 }
 
-void MainWindow::readLCMData()
+void MainWindow::loadLCMData()
 {
 	QString filename = getLCMFileName();
 	QFile file(filename);
 
 	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
 	{
-		/*
-		QMessageBox::StandardButton msg;
-		msg = QMessageBox::critical(this, "Error!", "LCM File Open Failed.", QMessageBox::Ok);
-		*/
 		QMessageBox::critical(this, "Error!", "LCM File Open Failed.", QMessageBox::Ok);
 		return;
 	}
@@ -1370,20 +1375,17 @@ void MainWindow::readLCMData()
 	}
 
 //	saveLCMData();	// test for equality
-	print("Loading LCModel data file is complete. (" + filename + ")");
+	print("[Load] LCModel data (" + filename + ")");
 	setLCMLayout();
 }
 
-QString MainWindow::getLCMFileName()
-{
-	QFileInfo f(T1->getFileName());
-	return f.absolutePath() + "/" + f.baseName() + ".lcm";
-}
 
-QString MainWindow::getPrefFileName()
+QString MainWindow::getSlabFileName()	{	return T1->getFileName("_slab");				}
+QString MainWindow::getLCMFileName()	{	return T1->getFileBaseName() + ".lcm";			}
+QString MainWindow::getPrefFileName()	{	return T1->getFilePath() + "/maven_info.txt";	}
+QString MainWindow::getMaskFileName(string metabolite)
 {
-	QFileInfo f(T1->getFileName());
-	return f.absolutePath() + "/maven_info.txt";
+	return T1->getFileName("_mask_"+ QString::fromStdString(metabolite));
 }
 
 void MainWindow::print(QString str)
@@ -1411,7 +1413,7 @@ void MainWindow::savePref()
 	QTextStream out(&file);
 	out << mrsiVoxNumX << " " << mrsiVoxNumY << " " << mrsiVoxNumZ << " "
 		<< mrsiVoxSizeX << " " << mrsiVoxSizeY << " " << mrsiVoxSizeZ;
-	print("Saving preferences file is complete. (" + filename + ")");
+	print("[Save] Preferences file (" + filename + ")");
 }
 
 void MainWindow::readPref()
@@ -1428,7 +1430,7 @@ void MainWindow::readPref()
 	QTextStream in(&file);
 	in >> mrsiVoxNumX >> mrsiVoxNumY >> mrsiVoxNumZ
 	   >> mrsiVoxSizeX >> mrsiVoxSizeY >> mrsiVoxSizeZ;
-	print("Loading preferences file is complete. (" + filename + ")");
+	print("[Load] Preferences file (" + filename + ")");
 }
 
 inline bool MainWindow::isFileExists(QString filename)

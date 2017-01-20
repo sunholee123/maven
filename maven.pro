@@ -11,13 +11,16 @@ LIBS += -lofstd
 SOURCES += main.cpp \
     MainWindow.cpp \
     NiftiImage.cpp \
-	Image.cpp
+	Image.cpp \
+    LCModelData.cpp
 
 HEADERS += \
     MainWindow.h \
     NiftiImage.h \
     nifti1.h \
-    Image.h
+    Image.h \
+    LCModelData.h
 
-#QMAKE_CXXFLAGS_RELEASE = -O3 -Ofast
-QMAKE_CXXFLAGS_RELEASE = -O3 -m64 -Ofast -flto -march=native -funroll-loops
+QMAKE_CXXFLAGS_RELEASE = -Ofast -pipe -flto -march=native
+
+

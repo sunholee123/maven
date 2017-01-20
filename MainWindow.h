@@ -27,28 +27,9 @@ struct Metabolite
 	float ratio;
 	bool qc;
 };
-/*
-struct DicomInfo
-{
-    Float32 coordFH, coordAP, coordRL;
-    Float32 angleFH, angleAP, angleRL;
 
-    friend DicomInfo operator-(const DicomInfo& a, const DicomInfo& b) {
-        DicomInfo result;
-        result.coordFH = a.coordFH - b.coordFH;
-        result.coordAP = a.coordAP - b.coordAP;
-        result.coordRL = a.coordRL - b.coordRL;
-        result.angleFH = a.angleFH - b.angleFH;
-        result.angleAP = a.angleAP - b.angleAP;
-		result.angleRL = a.angleRL - b.angleRL;
-        return result;
-    }
-};
-*/
 struct TableInfo
 {
-	//string metaInfo[35][4];
-	//string fwhm, snr;
 	map<string, Metabolite> metaInfo;
 	float fwhm;
 	int snr;
@@ -66,7 +47,6 @@ class QLabel;
 class QMenu;
 class QGridLayout;
 class QSpinBox;
-class QFileInfo;
 
 class MainWindow : public QMainWindow
 {
@@ -108,7 +88,6 @@ private:
 	QTextEdit *lcmInfo;
 
 	QLabel *intensityText;
-	//QDoubleSpinBox *intensitySpinBox;
 	QSpinBox *intensitySpinBox;
 
 	void createActions();
@@ -120,12 +99,12 @@ private:
 	QAction *openSlabMaskAct;
 	void setEnabledT1DepMenus(bool);
 
-	Image *T1;
-	Image *slab;
-	Image *mask;
+	// Image data
+	Image *T1	=	NULL;
+	Image *slab	=	NULL;
+	Image *mask	=	NULL;
 
 	// DICOM image
-//    DicomInfo T1, MRSI;
 	bool findDicomFiles(QString dir);
 	Float64 mrsiVoxSizeX;
 	Float64 mrsiVoxSizeY;
@@ -134,25 +113,23 @@ private:
 	Sint16 mrsiVoxNumY;
 	Sint16 mrsiVoxNumZ;
 
-	bool loadSlab(const QString &);
+	bool loadSlabImg(const QString &);
 
 	// LCM info
 	TableInfo ***tables = NULL;
 	QStringList metaList;
 
-	bool loadLCMInfo(QString dir); //bool loadLCMInfo(QStringList filepaths);
-	TableInfo parseTable(string filename);  //TableInfo parseTable(QString filename);
+	bool loadLCMInfo(QString dir);
+	TableInfo parseTable(string filename);
 	void presentLCMInfo();
 	void saveLCMData();
-	void readLCMData();
+	void loadLCMData();
 	QString getLCMFileName();
-
-	// Draw and update planes
 	float selectedVoxel = 0;
 
+	// Draw and update planes
 	void drawPlane(int planeType);
 	QImage overlayImage(QImage base, QImage overlay);
-	void initImages(int planeType, int imageType);
 
 	// Slab - voxel picking (single voxle selection yet)
 	bool eventFilter(QObject *watched, QEvent *e);
@@ -190,9 +167,10 @@ private:
 
 	void setSliceNum(Image *img);
 	double intensity;
-	void initAll();
+	void initImgsAll();
 
 	inline bool isFileExists(QString filename);
+	void drawPlaneAll();
 
 };
 

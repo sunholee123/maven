@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QImage>
+#include <QFileInfo>
 
 #include <dcmtk/dcmdata/dctk.h>
 #include "NiftiImage.h"
@@ -45,10 +46,15 @@ public:
     float sz();
 
 	double getIntensity();
-	QString getFileName();
 	float getImgVal(size_t i, size_t j, size_t k);
+	QString getFileName();
+	QString getFileName(QString appstr);
+	QString getFileBaseName();
+	QString getFileExtName();
+	QString getFilePath();
 	QImage getPlaneImage(int planetype, int slicenum);
 	DicomInfo getDCMInfo();
+
 
 	void setIntensity(double value);
     void setDCMInfo(DicomInfo dcminfo);
@@ -65,13 +71,11 @@ public:
 
 private:
     NiftiImage *img = NULL;
+	float *imgvol = NULL;
     QString filename;
-	float *imgvol;
-    QImage T1Images[3];
 
     double intensity;
     void setDefaultIntensity();
-    void setSliceNum();
     size_t dimX, dimY, dimZ;  // size of dimensions
     float sizeX, sizeY, sizeZ;  // size of voxels
 

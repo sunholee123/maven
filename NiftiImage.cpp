@@ -1096,31 +1096,33 @@ bool isGZippedFile(const string &fname)
 
 void NiftiImage::setFilenames(const string &fname)
 {
-    string ext = fname.substr(fname.find_last_of(".") + 1);
+	_ext = fname.substr(fname.find_last_of(".") + 1);
     _basename = fname.substr(0, fname.find_last_of("."));
     _gz = false;
-    if (ext == "gz") {
+	if (_ext == "gz") {
         _gz = true;
-        ext = _basename.substr(_basename.find_last_of(".") + 1);
+		_ext = _basename.substr(_basename.find_last_of(".") + 1);
         _basename = _basename.substr(0, _basename.find_last_of("."));
     }
-    if (ext == "hdr" || ext == "img") {
+	if (_ext == "hdr" || _ext == "img") {
         _imgname = _basename + ".img";
         _hdrname = _basename + ".hdr";
     }
-    else if (ext == "nii") {
+	else if (_ext == "nii") {
         _imgname = _hdrname = _basename + ".nii";
     }
     else {
-        cerr << "NiftiImage: Extension " << ext << " is not a valid NIfTI extension." << endl;
+		cerr << "NiftiImage: Extension " << _ext << " is not a valid NIfTI extension." << endl;
         exit(EXIT_FAILURE);
     }
     if (_gz) {
         _imgname += ".gz";
         _hdrname += ".gz";
+		_ext += ".gz";
     }
 }
 const string &NiftiImage::basename() { return _basename; }
+const string &NiftiImage::extname() { return _ext; }
 
 size_t NiftiImage::read(void *buff, size_t size, size_t nmemb)
 {

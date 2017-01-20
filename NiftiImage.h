@@ -204,7 +204,7 @@ private:
     float _voxdim[8];          //!< Dimensions of each voxel
     Affine3d _qform, _sform;   //!< Tranformation matrices from voxel indices to physical co-ords
 
-    string _basename, _imgname, _hdrname; // Paths to header and image files
+	string _basename, _imgname, _hdrname, _ext; // Paths to header and image files
     int _voxoffset;
     NiftiDataType _datatype;                   // Datatype on disk
     int _num_ext;
@@ -393,6 +393,7 @@ public:
     bool open(const string &filename, const char &mode);
     void close();
     const string &basename();
+	const string &extname();
     char *readRawVolume(const int vol);
     char *readRawAllVolumes();
 

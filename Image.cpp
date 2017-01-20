@@ -13,13 +13,12 @@ Image::Image(QString filename, char rw)
 
 Image::~Image()
 {
-//    img->close();
-	delete img;
+	if (imgvol!=NULL)	{	delete imgvol;	}
+	if (img!=NULL)		{	delete img;		}
 }
 
 void Image::open(QString filename, char rw)
 {
-//	img = new NiftiImage();
 	this->filename = filename;
 	if (isFileExists())
 	{
@@ -50,10 +49,33 @@ QString Image::getFileName()
 	return filename;
 }
 
+QString Image::getFileName(QString appstr)
+{
+	return getFileBaseName() + appstr + "." + getFileExtName();
+}
+
+
+QString Image::getFileBaseName()
+{
+	return QString::fromStdString(img->basename());
+}
+
+QString Image::getFileExtName()
+{
+	return QString::fromStdString(img->extname());
+}
+
+QString Image::getFilePath()
+{
+	QFileInfo f(filename);
+	return f.absolutePath();
+}
+
 float Image::getImgVal(size_t i, size_t j, size_t k)
 {
 	return imgvol[i + j * dimX + k * dimX * dimY];
 }
+
 
 
 void Image::setImgVal(size_t i, size_t j, size_t k, float value)
@@ -80,30 +102,12 @@ void Image::setDefaultIntensity()
 	intensity = 300 / maxval;
 }
 
-size_t Image::dx()
-{
-	return dimX;
-}
-size_t Image::dy()
-{
-	return dimY;
-}
-size_t Image::dz()
-{
-	return dimZ;
-}
-float Image::sx()
-{
-	return sizeX;
-}
-float Image::sy()
-{
-	return sizeY;
-}
-float Image::sz()
-{
-	return sizeZ;
-}
+size_t Image::dx()	{	return dimX;	}
+size_t Image::dy()	{	return dimY;	}
+size_t Image::dz()	{	return dimZ;	}
+float Image::sx()	{	return sizeX;	}
+float Image::sy()	{	return sizeY;	}
+float Image::sz()	{	return sizeZ;	}
 
 void Image::setDCMInfo(DicomInfo dicominfo)
 {
@@ -200,3 +204,4 @@ void Image::setBlankImgvol(size_t x, size_t y, size_t z)
 	size_t n = x * y * z;
 	imgvol = new float[n];
 }
+
