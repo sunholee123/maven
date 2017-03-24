@@ -6,6 +6,7 @@
 #include <QImage>
 #include <QMouseEvent>
 #include <vector>
+#include <set>
 
 #include <Eigen/Geometry>
 //#include <dcmtk/dcmdata/dctk.h>
@@ -77,8 +78,9 @@ private:
 
 	// menu & actions
 	QMenu *slabMenu;
+	QMenu *roiMenu;
 	QAction *overlaySlabAct;
-	QAction *openSlabMaskAct;
+	QAction *openMaskAct;
 	void setEnabledT1DepMenus(bool);
 
 	// Image data
@@ -102,6 +104,9 @@ private:
 	// Draw and update planes
 	void drawPlane(int planeType);
 	QImage overlayImage(QImage base, QImage overlay);
+	void changeSelectedVoxColor(QImage *img, int planetype, QRgb color);
+
+
 
 	// Slab - voxel picking (single voxle selection yet)
 	bool eventFilter(QObject *watched, QEvent *e);
@@ -150,6 +155,10 @@ private:
 	void saveLCMData();
 	void loadLCMData();
 	bool loadLCMInfo(QString dir);
+
+	// Select voxel from mask image
+	void selectVoxFromMask();
+	vector<int> selectedVoxs;
 
 };
 

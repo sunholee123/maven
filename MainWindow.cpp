@@ -139,8 +139,9 @@ void MainWindow::setLCMLayout()
 void MainWindow::setEnabledT1DepMenus(bool enabled)
 {
 	overlaySlabAct->setEnabled(enabled);
-	openSlabMaskAct->setEnabled(enabled);
+	openMaskAct->setEnabled(enabled);
 	slabMenu->setEnabled(enabled);
+	roiMenu->setEnabled(enabled);
 }
 
 /***** widget menu actions *****/
@@ -148,24 +149,68 @@ void MainWindow::createActions()
 {
 	QMenu *fileMenu = menuBar()->addMenu(tr("File"));
 	slabMenu = menuBar()->addMenu(tr("Slab"));
+	roiMenu = menuBar()->addMenu(tr("Mask"));
 	QMenu *helpMenu = menuBar()->addMenu(tr("Help"));
+
 
 	fileMenu->addAction(tr("Open T1 Image"), this, &MainWindow::openT1);
 	overlaySlabAct = fileMenu->addAction(tr("Overlay Slab"), this, &MainWindow::openSlab);
-	openSlabMaskAct = fileMenu->addAction(tr("Overlay Slab Mask"), this, &MainWindow::openMask);
+	openMaskAct = fileMenu->addAction(tr("Overlay ROI Mask Image"), this, &MainWindow::openMask);
 	fileMenu->addAction(tr("Exit"), this, &QWidget::close);
 
 	slabMenu->addAction(tr("Create Slab Image from DICOM Files"), this, &MainWindow::makeSlabFromDicom);
 	slabMenu->addAction(tr("Load LCM Info"), this, &MainWindow::openLCM);
 	slabMenu->addAction(tr("Load FSLVBM Segmented Images"), this, &MainWindow::loadT1Segs);
 	slabMenu->addAction(tr("QC + Create Slab Mask Image"), this, &MainWindow::makeMaskFromLCM);
+
+	roiMenu->addAction(tr("Select Voxels from ROI Mask Image"), this, &MainWindow::selectVoxFromMask);
+
 	// Some menus and actions are disabled until the T1 image is fully loaded
 	setEnabledT1DepMenus(false);
+
 	// future work: add help action
 	fileMenu->addSeparator();
 	slabMenu->addSeparator();
+
+
 	helpMenu->addAction("About", this, &MainWindow::about);
 }
+
+void MainWindow::selectVoxFromMask()
+{
+	int mrsivoxTotNum = mrsiVoxNumX * mrsiVoxNumY * mrsiVoxNumZ;
+
+	int voxMaskCount[mrsivoxTotNum] = {0};
+
+	for (size_t i = 0; i < T1->dx(); i++)
+	{
+		for (size_t j = 0; j < T1->dy(); j++)
+		{
+			for (size_t k = 0; k < T1->dz(); k++)
+			{
+				if (slab->getImgVal(i, j, k) != 0 && mask->getImgVal(i, j, k) != 0)
+				{
+					voxMaskCount[(int)slab->getImgVal(i, j, k)] += 1;
+				}
+			}
+		}
+	}
+
+	float mrsiVoxVolume = mrsiVoxSizeX * mrsiVoxSizeY * mrsiVoxSizeZ;
+
+	for (int i = 0; i < mrsivoxTotNum; i++)
+	{
+		if (voxMaskCount[i] > mrsiVoxVolume * 0.8)
+			selectedVoxs.push_back(i);
+	}
+
+	for(int i = 0; i < selectedVoxs.size(); i++)
+		 print(QString::number(selectedVoxs[i]));
+
+	print("[Info] Voxel selection completed");
+	printLine();
+}
+
 
 void MainWindow::about()
 {
@@ -661,20 +706,49 @@ void MainWindow::drawPlane(int planetype)
 	{
 		baseimg = T1->getPlaneImage(planetype, slice);
 	}
+
 	if (mask->isAvailable())
 	{
 		overlayimg = mask->getPlaneImage(planetype, slice);
 		baseimg = overlayImage(baseimg, overlayimg);
 	}
-	else if (slab->isAvailable())
+
+	if (slab->isAvailable())
 	{
 		overlayimg = slab->getPlaneImage(planetype, slice);
+		changeSelectedVoxColor(&overlayimg, planetype, qRgba(255, 0, 0, 255));
 		baseimg = overlayImage(baseimg, overlayimg);
 	}
 
 	// draw part
 	plane[planetype]->setPixmap(QPixmap::fromImage(baseimg.scaled(planeSize, planeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
 }
+
+
+void MainWindow::changeSelectedVoxColor(QImage *img, int planetype, QRgb color)
+{
+	int width = img->width();
+	int height = img->height();
+
+	int temp;
+
+	for (int i = 0; i < width; i++)
+	{
+		for (int j = 0; j < height; j++)
+		{
+			if (planetype == CORONAL)
+				temp = (int)slab->getImgVal(i, sliceNum[planetype], j);
+			else if (planetype == SAGITTAL)
+				temp = (int)slab->getImgVal(sliceNum[planetype], i, j);
+			else if (planetype == AXIAL)
+				temp = (int)slab->getImgVal(i, j, sliceNum[planetype]);
+
+			if (temp == 1360)
+				img->setPixel(i, j, color);
+		}
+	}
+}
+
 
 QImage MainWindow::overlayImage(QImage base, QImage overlay)
 {
@@ -714,6 +788,7 @@ void MainWindow::valueUpdateAxi(int value)
 void MainWindow::valueUpdateIntensity(int value)
 {
 	intensity = 300.0 / value;
+	T1->setIntensity(intensity);
 	drawPlaneAll();
 }
 
@@ -820,9 +895,9 @@ float MainWindow::getSlabVoxelValue(int x, int y, int planetype)
 	return val;
 	*/
 }
-
+/*
 void MainWindow::changeVoxelValues(float value, bool on)
-{/*
+{
 	if (value != -1)   // change value only for slab voxel
 	{
 		float temp;
@@ -850,8 +925,8 @@ void MainWindow::changeVoxelValues(float value, bool on)
 				}
 			}
 		}
-	}*/
 }
+*/
 
 void MainWindow::voxelQualityCheck(string metabolite, int sd, float fwhm, int snr, int conc, bool pvc)
 {
