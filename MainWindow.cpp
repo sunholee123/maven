@@ -715,8 +715,8 @@ void MainWindow::drawPlane(int planetype)
 
 	if (slab->isAvailable())
 	{
-		overlayimg = slab->getPlaneImage(planetype, slice);
-		changeSelectedVoxColor(&overlayimg, planetype, qRgba(255, 0, 0, 255));
+		overlayimg = slab->getPlaneImage(planetype, slice, selectedVoxs);
+//		changeSelectedVoxColor(&overlayimg, planetype, qRgba(255, 0, 0, 255));
 		baseimg = overlayImage(baseimg, overlayimg);
 	}
 
@@ -724,7 +724,7 @@ void MainWindow::drawPlane(int planetype)
 	plane[planetype]->setPixmap(QPixmap::fromImage(baseimg.scaled(planeSize, planeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
 }
 
-
+/*
 void MainWindow::changeSelectedVoxColor(QImage *img, int planetype, QRgb color)
 {
 	int width = img->width();
@@ -748,7 +748,7 @@ void MainWindow::changeSelectedVoxColor(QImage *img, int planetype, QRgb color)
 		}
 	}
 }
-
+*/
 
 QImage MainWindow::overlayImage(QImage base, QImage overlay)
 {

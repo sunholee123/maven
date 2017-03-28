@@ -142,6 +142,12 @@ bool Image::isAvailable()
 
 QImage Image::getPlaneImage(int planetype, int slicenum)
 {
+	vector<int> selectedVoxs;
+	return getPlaneImage(planetype, slicenum, selectedVoxs);
+}
+
+QImage Image::getPlaneImage(int planetype, int slicenum, const vector<int> &selectedVoxs)
+{
 	QImage planeimage;
 	int width = 0;
 	int height = 0;
@@ -172,7 +178,11 @@ QImage Image::getPlaneImage(int planetype, int slicenum)
 			QRgb pixval;
 			if (isOverlay())
 			{
-				pixval = qRgba(value * intensity, value * intensity, 0, 255);
+				// is a selected voxel?
+				if (!selectedVoxs.empty() && std::find(selectedVoxs.begin(), selectedVoxs.end(), (int)value) != selectedVoxs.end())
+					pixval = qRgba(value * intensity, 0, 0, 255);	// red
+				else
+					pixval = qRgba(value * intensity, value * intensity, 0, 255);	// yellow
 			}
 			else
 			{
@@ -206,4 +216,3 @@ void Image::setBlankImgvol(size_t x, size_t y, size_t z)
 	size_t n = x * y * z;
 	imgvol = new float[n];
 }
-

@@ -53,6 +53,7 @@ public:
 	QString getFileExtName();
 	QString getFilePath();
 	QImage getPlaneImage(int planetype, int slicenum);
+	QImage getPlaneImage(int planetype, int slicenum, const vector<int> &selectedVoxs);
 	DicomInfo getDCMInfo();
 
 
