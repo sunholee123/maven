@@ -159,6 +159,7 @@ private:
 	// Select voxel from mask image
 	void selectVoxFromMask();
 	vector<int> selectedVoxs;
+	void saveVoxAsMask();
 
 };
 

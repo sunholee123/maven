@@ -139,7 +139,7 @@ void MainWindow::setLCMLayout()
 void MainWindow::setEnabledT1DepMenus(bool enabled)
 {
 	overlaySlabAct->setEnabled(enabled);
-	openMaskAct->setEnabled(enabled);
+	//openMaskAct->setEnabled(enabled);
 	slabMenu->setEnabled(enabled);
 	roiMenu->setEnabled(enabled);
 }
@@ -155,7 +155,7 @@ void MainWindow::createActions()
 
 	fileMenu->addAction(tr("Open T1 Image"), this, &MainWindow::openT1);
 	overlaySlabAct = fileMenu->addAction(tr("Overlay Slab"), this, &MainWindow::openSlab);
-	openMaskAct = fileMenu->addAction(tr("Overlay ROI Mask Image"), this, &MainWindow::openMask);
+	//openMaskAct = fileMenu->addAction(tr("Overlay ROI Mask Image"), this, &MainWindow::openMask);
 	fileMenu->addAction(tr("Exit"), this, &QWidget::close);
 
 	slabMenu->addAction(tr("Create Slab Image from DICOM Files"), this, &MainWindow::makeSlabFromDicom);
@@ -163,7 +163,9 @@ void MainWindow::createActions()
 	slabMenu->addAction(tr("Load FSLVBM Segmented Images"), this, &MainWindow::loadT1Segs);
 	slabMenu->addAction(tr("QC + Create Slab Mask Image"), this, &MainWindow::makeMaskFromLCM);
 
-	roiMenu->addAction(tr("Select Voxels from ROI Mask Image"), this, &MainWindow::selectVoxFromMask);
+	roiMenu->addAction(tr("Overlay ROI Mask Image"), this, &MainWindow::openMask);
+//	roiMenu->addAction(tr("Select Voxels from ROI Mask Image"), this, &MainWindow::selectVoxFromMask);
+	roiMenu->addAction(tr("Save Selected Voxels as Mask Image"), this, &MainWindow::saveVoxAsMask);
 
 	// Some menus and actions are disabled until the T1 image is fully loaded
 	setEnabledT1DepMenus(false);
@@ -174,6 +176,36 @@ void MainWindow::createActions()
 
 
 	helpMenu->addAction("About", this, &MainWindow::about);
+}
+
+void MainWindow::saveVoxAsMask()
+{
+	Image *voxMask = new Image();
+	const size_t dimX = slab->dx();
+	const size_t dimY = slab->dy();
+	const size_t dimZ = slab->dz();
+	voxMask->setBlankImgvol(dimX, dimY, dimZ);
+
+	for (size_t i = 0; i < dimX; i++)
+	{
+		for (size_t j = 0; j < dimY; j++)
+		{
+			for (size_t k = 0; k < dimZ; k++)
+			{
+				int voxnum = slab->getImgVal(i, j, k);
+				if (std::find(selectedVoxs.begin(), selectedVoxs.end(), voxnum) != selectedVoxs.end())
+					voxMask->setImgVal(i, j, k, voxnum);
+				else
+					voxMask->setImgVal(i, j, k, 0);
+			}
+		}
+	}
+	QString filename = mask->getFilePath() + "/mask.nii.gz";
+	voxMask->saveImageFile(filename, slab);
+	delete voxMask;
+
+	print("[Save] Mask image (" + filename + ")");
+	printLine();
 }
 
 void MainWindow::selectVoxFromMask()
@@ -206,6 +238,8 @@ void MainWindow::selectVoxFromMask()
 
 	for(int i = 0; i < selectedVoxs.size(); i++)
 		 print(QString::number(selectedVoxs[i]));
+
+	drawPlaneAll();
 
 	print("[Info] Voxel selection completed");
 	printLine();
@@ -286,7 +320,10 @@ void MainWindow::openMask()
 
 	while (dialog.exec() == QDialog::Accepted && !loadMaskImg(dialog.selectedFiles().first())) {}
 
-	printLine();
+	selectVoxFromMask();
+
+	//printLine();
+
 }
 
 void MainWindow::makeSlabFromDicom()
@@ -547,7 +584,7 @@ bool MainWindow::findDicomFiles(QString dir)
 		QMessageBox::critical(this, "Error!", "Can't find DICOM files.", QMessageBox::Ok);
 		return false;
 	}
-
+	print("[Load] DICOM directory (" + dir + ")");
 	DcmFileFormat fileformat;
 	OFCondition status;
 	OFString seriesDescription;
@@ -556,8 +593,24 @@ bool MainWindow::findDicomFiles(QString dir)
 	bool T1flag = false;
 	bool MRSIflag = false;
 
+	// interleaving if the number of dicom files > 100
+	int count = 0;
+	bool interleaving;
+	interleaving = true;
+//	interleaving = false;
+
 	while (it.hasNext())
 	{
+		if (interleaving)
+		{
+			count++;
+			if (count%100 != 0)
+			{
+				it.next();
+				continue;
+			}
+		}
+
 		status = fileformat.loadFile(it.next().toStdString().c_str());
 
 		if (status.good())
