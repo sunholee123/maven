@@ -136,8 +136,11 @@ private:
 	void printLine();
 
 	void savePref();
-	void readPref();
+	void loadPref();
 	QString getPrefFileName();
+	int qcMetabolite;
+	QString qcSD, qcFWHM, qcSNR, qcConc;
+	bool qcPVC;
 
 	// help menu
 	void about();

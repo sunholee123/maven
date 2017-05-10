@@ -210,15 +210,15 @@ void MainWindow::saveVoxAsMask()
 
 void MainWindow::selectVoxFromMask()
 {
-	int mrsivoxTotNum = mrsiVoxNumX * mrsiVoxNumY * mrsiVoxNumZ;
+	int mrsivoxTotNum = mrsiVoxNumX * mrsiVoxNumY * mrsiVoxNumZ + 1;
 
 	int voxMaskCount[mrsivoxTotNum] = {0};
 
-	for (size_t i = 0; i < T1->dx(); i++)
+	for (size_t i = 0; i < slab->dx(); i++)
 	{
-		for (size_t j = 0; j < T1->dy(); j++)
+		for (size_t j = 0; j < slab->dy(); j++)
 		{
-			for (size_t k = 0; k < T1->dz(); k++)
+			for (size_t k = 0; k < slab->dz(); k++)
 			{
 				if (slab->getImgVal(i, j, k) != 0 && mask->getImgVal(i, j, k) != 0)
 				{
@@ -230,6 +230,7 @@ void MainWindow::selectVoxFromMask()
 
 	float mrsiVoxVolume = mrsiVoxSizeX * mrsiVoxSizeY * mrsiVoxSizeZ;
 
+	selectedVoxs.clear();
 	for (int i = 0; i < mrsivoxTotNum; i++)
 	{
 		if (voxMaskCount[i] > mrsiVoxVolume * 0.8)
@@ -268,8 +269,8 @@ void MainWindow::initImgsAll()
 
 	T1 = new Image();
 	slab = new Image();
-	mask = new Image();
 	slab->setOverlay(true);
+	mask = new Image();
 	mask->setOverlay(true);
 
 	lcm = new LCModelData();
@@ -286,12 +287,12 @@ void MainWindow::openT1()
 		T1->open(dialog.selectedFiles().first(), 'r');
 		print("[Load] T1 image (" + T1->getFileName() + ")");
 
-		if(isFileExists(getPrefFileName()))	{	readPref();						}
+		if(isFileExists(getPrefFileName()))	{	loadPref();						}
 		if(isFileExists(getSlabFileName()))	{	loadSlabImg(getSlabFileName());	}
 		if(isFileExists(getLCMFileName()))
 		{
 			loadLCMData();
-			if (slab->isAvailable())
+			if (slab->isAvailable() && QDir(T1->getFilePath() + "/struc").exists())
 				loadT1Segs();
 		}
 
@@ -471,6 +472,26 @@ void MainWindow::loadT1Segs()
 
 void MainWindow::makeMaskFromLCM()
 {
+	int qcMetabolite = 0;
+	QString qcSD = "20", qcFWHM = "0.2", qcSNR = "-1", qcConc = "99999";
+	int qcPVC = true;
+
+	QString qcfilename = T1->getFilePath() + "/maven_info_QC.txt";
+	if(isFileExists(qcfilename))
+	{
+		QFile file(qcfilename);
+		if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+		{
+			QMessageBox::critical(this, "Error!", "LCM File Open Failed.", QMessageBox::Ok);
+		}
+		else
+		{
+			QTextStream in(&file);
+			in >> qcMetabolite >> qcSD >> qcFWHM >> qcSNR >> qcConc >> qcPVC;
+		}
+		file.close();
+	}
+
 	// future work: if no LCM data loaded, then popup message
 	QDialog dialog(this);
 	QFormLayout form(&dialog);
@@ -478,28 +499,33 @@ void MainWindow::makeMaskFromLCM()
 
 	QComboBox *metabolites = new QComboBox();
 	metabolites->addItems(lcm->metaList);
+	metabolites->setCurrentIndex(qcMetabolite);
 	form.addRow("Metabolite", metabolites);
 
 	QLineEdit *sdInput = new QLineEdit(&dialog);
 	sdInput->setValidator(new QIntValidator(0, 100, this));
-	sdInput->setText("20");
+	sdInput->setText(qcSD);
 	form.addRow("SD(%)", sdInput);
 
 	QLineEdit *fwhmInput = new QLineEdit(&dialog);
 	fwhmInput->setValidator(new QDoubleValidator(0, 10, 2, this));
-	fwhmInput->setText("0.2");
+	fwhmInput->setText(qcFWHM);
 	form.addRow("FWHM", fwhmInput);
 
 	QLineEdit *snrInput = new QLineEdit(&dialog);
 	snrInput->setValidator(new QIntValidator(0, 10, this));
+	if (qcSNR != "-1")
+		snrInput->setText(qcSNR);
 	form.addRow("SNR (optional)", snrInput);
 
 	QLineEdit *concInput = new QLineEdit(&dialog);
 	concInput->setValidator(new QIntValidator(0, 10000, this));
+	if (qcConc != "99999")
+		concInput->setText(qcConc);
 	form.addRow("Conc (optional)", concInput);
 	//
 	QCheckBox *pvcCheck = new QCheckBox(&dialog);
-	pvcCheck->setChecked(true);
+	pvcCheck->setChecked(qcPVC);
 	form.addRow("PVC (optional)", pvcCheck);
 	//
 	QDialogButtonBox buttonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, Qt::Horizontal, &dialog);
@@ -527,8 +553,20 @@ void MainWindow::makeMaskFromLCM()
 		QString maskfilename = getMaskFileName(metabolite, sd, fwhm, snr, conc, pvc);
 		makeMask(metabolite, pvc);
 		mask->saveImageFile(maskfilename, T1);
-		loadMaskImg(maskfilename);
 		print("[Save] Mask image (" + maskfilename + ")");
+		loadMaskImg(maskfilename);
+		//loadSlabImg(maskfilename);
+		print("[Load] Mask image (" + maskfilename + ")");
+
+		QFile file(qcfilename);
+		QTextStream out(&file);
+		if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+		{
+			QMessageBox::critical(this, "Error!", "Prefernces File Creation Failed.", QMessageBox::Ok);
+		}
+		out << metabolites->findText(metabolites->currentText()) << " " << sdInput->text() << " "
+			<< fwhmInput->text() << " " << QString::number(snr) << " " << QString::number(conc) << " " << pvcCheck->isChecked();
+		file.close();
 	}
 
 	printLine();
@@ -596,8 +634,8 @@ bool MainWindow::findDicomFiles(QString dir)
 	// interleaving if the number of dicom files > 100
 	int count = 0;
 	bool interleaving;
-	interleaving = true;
-//	interleaving = false;
+//	interleaving = true;
+	interleaving = false;
 
 	while (it.hasNext())
 	{
@@ -637,11 +675,17 @@ bool MainWindow::findDicomFiles(QString dir)
 				{
 					bool success = true;
 					item = sqi->getItem(0);
-					DcmDataset *dset = fileformat.getDataset();
 					// Pixel spacing, slice thickness
+					/*
+					DcmDataset *dset = fileformat.getDataset();
 					success *= dset->findAndGetFloat64(DcmTag(0x0028, 0x0030), mrsiVoxSizeX, 0, false).good(); // Pixel Spacing 0
 					success *= dset->findAndGetFloat64(DcmTag(0x0028, 0x0030), mrsiVoxSizeY, 1, false).good(); // Pixel Spacing 1
 					success *= dset->findAndGetFloat64(DcmTag(0x0018, 0x0050), mrsiVoxSizeZ, 0, false).good(); // Slice Thickness
+					*/
+					mrsiVoxSizeX = 6.875;
+					mrsiVoxSizeY = 6.875;
+					mrsiVoxSizeZ = 15;
+
 					// Coordinates
 					DicomInfo MRSIdcminfo;
 					success *= item->findAndGetFloat32(DcmTag(0x2005, 0x1078), MRSIdcminfo.coordAP, 0, false).good();
@@ -668,7 +712,7 @@ bool MainWindow::findDicomFiles(QString dir)
 				if (T1flag && MRSIflag)
 				{
 					savePref(); // save mrsivoxnum values
-					readPref();
+					loadPref();
 					return true;
 				}
 			}
@@ -685,8 +729,8 @@ bool MainWindow::loadSlabImg(const QString &fileName)
 {
 	delete slab;
 	slab = new Image();
-	slab->open(fileName, 'r');
 	slab->setOverlay(true);
+	slab->open(fileName, 'r');
 	print("[Load] Slab image (" + fileName + ")");
 	return true;
 }
@@ -696,8 +740,8 @@ bool MainWindow::loadMaskImg(const QString &fileName)
 {
 	delete mask;
 	mask = new Image();
-	mask->open(fileName, 'r');
 	mask->setOverlay(true);
+	mask->open(fileName, 'r');
 	print("[Load] Mask image (" + fileName + ")");
 	drawPlaneAll();
 	return true;
@@ -1454,10 +1498,10 @@ void MainWindow::savePref()
 	QTextStream out(&file);
 	out << mrsiVoxNumX << " " << mrsiVoxNumY << " " << mrsiVoxNumZ << " "
 		<< mrsiVoxSizeX << " " << mrsiVoxSizeY << " " << mrsiVoxSizeZ;
-	print("[Save] Preferences file (" + filename + ")");
+//	print("[Save] Preferences file (" + filename + ")");
 }
 
-void MainWindow::readPref()
+void MainWindow::loadPref()
 {
 	QString filename = getPrefFileName();
 	QFile file(filename);
@@ -1471,8 +1515,9 @@ void MainWindow::readPref()
 	QTextStream in(&file);
 	in >> mrsiVoxNumX >> mrsiVoxNumY >> mrsiVoxNumZ
 	   >> mrsiVoxSizeX >> mrsiVoxSizeY >> mrsiVoxSizeZ;
-	print("[Load] Preferences file (" + filename + ")");
+//	print("[Load] Preferences file (" + filename + ")");
 }
+
 
 inline bool MainWindow::isFileExists(QString filename)
 {

@@ -46,6 +46,7 @@ public:
     float sz();
 
 	double getIntensity();
+	float getMaxVal();
 	float getImgVal(size_t i, size_t j, size_t k);
 	QString getFileName();
 	QString getFileName(QString appstr);

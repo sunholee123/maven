@@ -38,7 +38,8 @@ void Image::open(QString filename, char rw)
 
 void Image::setIntensity(double value)
 {
-	intensity = value;
+	setDefaultIntensity();
+	//intensity = value;
 }
 double Image::getIntensity()
 {
@@ -85,8 +86,15 @@ void Image::setImgVal(size_t i, size_t j, size_t k, float value)
 
 void Image::setDefaultIntensity()
 {
-	float maxval = 0;
+	if (isOverlay())
+		intensity = 255 / this->getMaxVal();
+	else
+		intensity = 400 / this->getMaxVal();
+}
 
+float Image::getMaxVal()
+{
+	float maxval = 0;
 	for (size_t i = 0; i < dimX; i++)
 	{
 		for (size_t j = 0; j < dimY; j++)
@@ -98,8 +106,7 @@ void Image::setDefaultIntensity()
 			}
 		}
 	}
-
-	intensity = 300 / maxval;
+	return maxval;
 }
 
 size_t Image::dx()	{	return dimX;	}
@@ -180,7 +187,7 @@ QImage Image::getPlaneImage(int planetype, int slicenum, const vector<int> &sele
 			{
 				// is a selected voxel?
 				if (!selectedVoxs.empty() && std::find(selectedVoxs.begin(), selectedVoxs.end(), (int)value) != selectedVoxs.end())
-					pixval = qRgba(value * intensity, 0, 0, 255);	// red
+					pixval = qRgba(255, 0, 0, 255);	// red, solid color
 				else
 					pixval = qRgba(value * intensity, value * intensity, 0, 255);	// yellow
 			}
