@@ -137,6 +137,7 @@ private:
 
 	void savePref();
 	void loadPref();
+
 	QString getPrefFileName();
 	int qcMetabolite;
 	QString qcSD, qcFWHM, qcSNR, qcConc;

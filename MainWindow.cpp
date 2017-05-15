@@ -108,8 +108,14 @@ void MainWindow::setLCMLayout()
 		QGridLayout *gbox = new QGridLayout;
 		QButtonGroup *group = new QButtonGroup();
 		group->setExclusive(false);
-		int j = 0;
 
+
+		QSettings settings(T1->getFilePath()+"/maven_settings.txt", QSettings::NativeFormat);
+		QString metalist_temp = settings.value("metalist").toString();
+		QStringList metalist_avail = metalist_temp.split(" ");
+		//QStringList metalist_avail = settings.value("metalist").toStringList();ntm
+
+		int j = 0;
 		for (int i = 0; i < lcm->metaList.size(); i++)
 		{
 			if (i % 2 == 0)
@@ -119,6 +125,13 @@ void MainWindow::setLCMLayout()
 			metaBox->setText(lcm->metaList[i]);
 			gbox->addWidget(metaBox, j, i % 2);
 			group->addButton(metaBox);
+
+			if (metalist_avail.contains(lcm->metaList[i]))
+			{
+				metaBox->setChecked(true);
+				selMetaList.push_back(metaBox->text());
+
+			}
 		}
 
 		connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(updateMetaChecked(QAbstractButton *)));
@@ -472,6 +485,12 @@ void MainWindow::loadT1Segs()
 
 void MainWindow::makeMaskFromLCM()
 {
+	if (selMetaList.empty())
+	{
+		QMessageBox::critical(this, "Error!", "Please check metabolites you want to analyze", QMessageBox::Ok);
+		return;
+	}
+
 	int qcMetabolite = 0;
 	QString qcSD = "20", qcFWHM = "0.2", qcSNR = "-1", qcConc = "99999";
 	int qcPVC = true;
@@ -496,12 +515,12 @@ void MainWindow::makeMaskFromLCM()
 	QDialog dialog(this);
 	QFormLayout form(&dialog);
 	form.addRow(new QLabel("<center>Values for Quality Check</center>"));
-
+/*
 	QComboBox *metabolites = new QComboBox();
 	metabolites->addItems(lcm->metaList);
 	metabolites->setCurrentIndex(qcMetabolite);
 	form.addRow("Metabolite", metabolites);
-
+*/
 	QLineEdit *sdInput = new QLineEdit(&dialog);
 	sdInput->setValidator(new QIntValidator(0, 100, this));
 	sdInput->setText(qcSD);
@@ -535,7 +554,6 @@ void MainWindow::makeMaskFromLCM()
 
 	if (dialog.exec() == QDialog::Accepted)
 	{
-		string metabolite = metabolites->currentText().toStdString();
 		int sd = sdInput->text().toInt();
 		float fwhm = fwhmInput->text().toFloat();
 		int snr = -1;
@@ -549,14 +567,24 @@ void MainWindow::makeMaskFromLCM()
 
 		bool pvc = pvcCheck->isChecked();
 
-		voxelQualityCheck(metabolite, sd, fwhm, snr, conc, pvc);
-		QString maskfilename = getMaskFileName(metabolite, sd, fwhm, snr, conc, pvc);
-		makeMask(metabolite, pvc);
-		mask->saveImageFile(maskfilename, T1);
-		print("[Save] Mask image (" + maskfilename + ")");
-		loadMaskImg(maskfilename);
-		//loadSlabImg(maskfilename);
-		print("[Load] Mask image (" + maskfilename + ")");
+		for (int i = 0; i < selMetaList.size(); i++)
+		{
+			string metabolite = selMetaList[i].toStdString();
+			voxelQualityCheck(metabolite, sd, fwhm, snr, conc, pvc);
+			QString maskfilename = getMaskFileName(metabolite, sd, fwhm, snr, conc, pvc);
+			makeMask(metabolite, pvc);
+			mask->saveImageFile(maskfilename, T1);
+			print("[Save] Mask image (" + maskfilename + ")");
+			loadMaskImg(maskfilename);
+			//loadSlabImg(maskfilename);
+//			print("[Load] Mask image (" + maskfilename + ")");
+//
+
+			// print
+			float avg = calAvgConc(metabolite);
+			print(QString::fromStdString(metabolite) + ": " + QString::number(avg));
+		}
+
 
 		QFile file(qcfilename);
 		QTextStream out(&file);
@@ -564,11 +592,9 @@ void MainWindow::makeMaskFromLCM()
 		{
 			QMessageBox::critical(this, "Error!", "Prefernces File Creation Failed.", QMessageBox::Ok);
 		}
-		out << metabolites->findText(metabolites->currentText()) << " " << sdInput->text() << " "
-			<< fwhmInput->text() << " " << QString::number(snr) << " " << QString::number(conc) << " " << pvcCheck->isChecked();
+		out << sdInput->text() << " " << fwhmInput->text() << " " << QString::number(snr) << " " << QString::number(conc) << " " << pvcCheck->isChecked();
 		file.close();
 	}
-
 	printLine();
 }
 
@@ -1121,6 +1147,15 @@ void MainWindow::updateMetaChecked(QAbstractButton *button)
 		int index = selMetaList.indexOf(button->text(), 0);
 		selMetaList.removeAt(index);
 	}
+
+	QSettings settings(T1->getFilePath()+"/maven_settings.txt", QSettings::NativeFormat);
+	QString metalist="";
+	for (int i = 0; i < selMetaList.size(); i++)
+	{
+		metalist += selMetaList[i];
+		metalist += " ";
+	}
+	settings.setValue("metalist", metalist);
 }
 
 void MainWindow::calAvgButtonClicked()
@@ -1135,8 +1170,9 @@ void MainWindow::calAvgButtonClicked()
 		{
 			string metabolite = selMetaList[i].toStdString();
 			float avg = calAvgConc(metabolite);
-			string text = metabolite + ": " + std::to_string(avg) + "\n";
-			infotext.append(QString::fromStdString(text));
+			print(QString::fromStdString(metabolite) + ": " + QString::number(avg));
+			//string text = metabolite + ": " + std::to_string(avg) + "\n";
+			//infotext.append(QString::fromStdString(text));
 		}
 
 		lcmInfo->setText(infotext);
