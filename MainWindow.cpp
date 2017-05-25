@@ -279,6 +279,10 @@ void MainWindow::initImgsAll()
 	{
 		delete mask;
 	}
+	if (lcm != NULL)
+	{
+//		delete lcm;
+	}
 
 	T1 = new Image();
 	slab = new Image();
@@ -308,7 +312,6 @@ void MainWindow::openT1()
 			if (slab->isAvailable() && QDir(T1->getFilePath() + "/struc").exists())
 				loadT1Segs();
 		}
-
 
 		setSliceNum(T1);
 		setEnabledT1DepMenus(true);
@@ -506,7 +509,8 @@ void MainWindow::makeMaskFromLCM()
 		else
 		{
 			QTextStream in(&file);
-			in >> qcMetabolite >> qcSD >> qcFWHM >> qcSNR >> qcConc >> qcPVC;
+			//in >> qcMetabolite >> qcSD >> qcFWHM >> qcSNR >> qcConc >> qcPVC;
+			in >> qcSD >> qcFWHM >> qcSNR >> qcConc >> qcPVC;
 		}
 		file.close();
 	}
@@ -514,7 +518,7 @@ void MainWindow::makeMaskFromLCM()
 	// future work: if no LCM data loaded, then popup message
 	QDialog dialog(this);
 	QFormLayout form(&dialog);
-	form.addRow(new QLabel("<center>Values for Quality Check</center>"));
+	form.addRow(new QLabel("<center>Values for Quality Control</center>"));
 /*
 	QComboBox *metabolites = new QComboBox();
 	metabolites->addItems(lcm->metaList);
@@ -567,6 +571,7 @@ void MainWindow::makeMaskFromLCM()
 
 		bool pvc = pvcCheck->isChecked();
 
+		lcmInfo->setText("");
 		for (int i = 0; i < selMetaList.size(); i++)
 		{
 			string metabolite = selMetaList[i].toStdString();
@@ -575,14 +580,13 @@ void MainWindow::makeMaskFromLCM()
 			makeMask(metabolite, pvc);
 			mask->saveImageFile(maskfilename, T1);
 			print("[Save] Mask image (" + maskfilename + ")");
-			loadMaskImg(maskfilename);
-			//loadSlabImg(maskfilename);
-//			print("[Load] Mask image (" + maskfilename + ")");
-//
+			//loadMaskImg(maskfilename);
 
 			// print
-			float avg = calAvgConc(metabolite);
-			print(QString::fromStdString(metabolite) + ": " + QString::number(avg));
+			float avg = calAvgConcPVC(metabolite);
+			//print(QString::fromStdString(metabolite) + ": " + QString::number(avg));
+			string text = metabolite + ": " + std::to_string(avg) + "\n";
+			lcmInfo->append(QString::fromStdString(text));
 		}
 
 
@@ -1169,7 +1173,7 @@ void MainWindow::calAvgButtonClicked()
 		for (int i = 0; i < selMetaList.size(); i++)
 		{
 			string metabolite = selMetaList[i].toStdString();
-			float avg = calAvgConc(metabolite);
+			float avg = calAvgConcPVC(metabolite);
 			print(QString::fromStdString(metabolite) + ": " + QString::number(avg));
 			//string text = metabolite + ": " + std::to_string(avg) + "\n";
 			//infotext.append(QString::fromStdString(text));
@@ -1179,10 +1183,9 @@ void MainWindow::calAvgButtonClicked()
 	}
 }
 
-float MainWindow::calAvgConc(string metabolite)
+float MainWindow::calAvgConcPVC(string metabolite)
 {
-	float sum = 0;
-	int count = 0;
+	vector<float> v;
 
 	for (int i = 0; i < mrsiVoxNumZ; i++)
 	{
@@ -1199,8 +1202,8 @@ float MainWindow::calAvgConc(string metabolite)
 					{
 						if (tempPos->second.qc)
 						{
-							count++;
-							sum += tempPos->second.conc * lcm->tables[i][j][k].pvc;
+							v.push_back(tempPos->second.conc * lcm->tables[i][j][k].pvc);
+							//lcmInfo->append(QString::number(tempPos->second.conc * lcm->tables[i][j][k].pvc));
 						}
 					}
 				}
@@ -1208,11 +1211,34 @@ float MainWindow::calAvgConc(string metabolite)
 		}
 	}
 
-	string s1 = "sum: " + std::to_string(sum);
-	string s2 = "count: " + std::to_string(count);
-	lcmInfo->append(QString::fromStdString(s1));
+	// interquartile range
+	sort(v.begin(), v.end());
+	float q1 = v[v.size()*0.25];
+	float q3 = v[v.size()*0.75];
+	float iqr = q3 - q1;
+	float bound1 = q1 - iqr * 1.5;
+	float bound2 = q3 + iqr * 1.5;
+
+	// remove
+	vector<float>::iterator it;
+	it = remove_if(v.begin(), v.end(), bind2nd(less<float>(), bound1));
+	v.erase(it, v.end());
+	it = remove_if(v.begin(), v.end(), bind2nd(greater<float>(), bound2));
+	v.erase(it, v.end());
+
+	float sum = std::accumulate(v.begin(), v.end(), 0.0);
+	float avg = sum / v.size();
+	float sq_sum = std::inner_product(v.begin(), v.end(), v.begin(), 0.0);
+	float stdev = std::sqrt(sq_sum / v.size() - avg * avg);
+
+	string s2 = std::to_string(v.size()) + " " + std::to_string(avg) + " " + std::to_string(stdev);
 	lcmInfo->append(QString::fromStdString(s2));
-	return (sum / count);
+
+	// print all voxel values (for debuging)
+//	for (const auto& i : v)
+//		lcmInfo->append((QString::number(i)));
+
+	return avg;
 }
 
 void MainWindow::calMajorButtonClicked()
@@ -1235,9 +1261,9 @@ void MainWindow::calMajorButtonClicked()
 		////
 		string metabolite = majorList[i].toStdString();
 		voxelQualityCheck(metabolite, sd, fwhm, snr, conc, pvc);
-		float avg = calAvgConc(metabolite);
-		string text = metabolite + ": " + std::to_string(avg) + "\n";
-		lcmInfo->append(QString::fromStdString(text));
+		float avg = calAvgConcPVC(metabolite);
+		//string text = metabolite + ": " + std::to_string(avg) + "\n";
+		//lcmInfo->append(QString::fromStdString(text));
 	}
 }
 

@@ -121,7 +121,7 @@ private:
 
 	// statistics
 	QStringList selMetaList;
-	float calAvgConc(string metabolite);
+	float calAvgConcPVC(string metabolite);
 
 	// Slab
 	void makeSlab();

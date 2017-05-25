@@ -22,6 +22,8 @@ void Image::open(QString filename, char rw)
 	this->filename = filename;
 	if (isFileExists())
 	{
+//		if (img != NULL)
+//			delete img;
 		img->open(filename.toStdString(), rw);
 		dimX = img->nx();
 		dimY = img->ny();
@@ -29,6 +31,8 @@ void Image::open(QString filename, char rw)
 		sizeX = img->dx();
 		sizeY = img->dy();
 		sizeZ = img->dz();
+		if (imgvol != NULL)
+			delete imgvol;
 		imgvol = img->readAllVolumes<float>();
 		img->close();
 		setDefaultIntensity();
@@ -221,5 +225,8 @@ void Image::setBlankImgvol(size_t x, size_t y, size_t z)
 	dimY = y;
 	dimZ = z;
 	size_t n = x * y * z;
+
+	if (imgvol != NULL)
+		delete imgvol;
 	imgvol = new float[n];
 }
