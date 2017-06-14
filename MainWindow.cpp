@@ -576,17 +576,21 @@ void MainWindow::makeMaskFromLCM()
 		{
 			string metabolite = selMetaList[i].toStdString();
 			voxelQualityCheck(metabolite, sd, fwhm, snr, conc, pvc);
-			QString maskfilename = getMaskFileName(metabolite, sd, fwhm, snr, conc, pvc);
-			makeMask(metabolite, pvc);
-			mask->saveImageFile(maskfilename, T1);
-			print("[Save] Mask image (" + maskfilename + ")");
-			//loadMaskImg(maskfilename);
 
 			// print
 			float avg = calAvgConcPVC(metabolite);
 			//print(QString::fromStdString(metabolite) + ": " + QString::number(avg));
 			string text = metabolite + ": " + std::to_string(avg) + "\n";
 			lcmInfo->append(QString::fromStdString(text));
+
+			// make metabolite map
+			QString maskfilename = getMaskFileName(metabolite, sd, fwhm, snr, conc, pvc);
+			makeMask(metabolite, pvc);
+			mask->saveImageFile(maskfilename, T1);
+			print("[Save] Mask image (" + maskfilename + ")");
+			//loadMaskImg(maskfilename);
+
+
 		}
 
 
@@ -1102,6 +1106,44 @@ void MainWindow::voxelQualityCheck(string metabolite, int sd, float fwhm, int sn
 
 void MainWindow::makeMask(string metabolite, bool pvc)
 {
+	// warning: pvc only
+	// warning: pvc only
+	vector<float> v;
+
+	for (int i = 0; i < mrsiVoxNumZ; i++)
+	{
+		for (int j = 0; j < mrsiVoxNumY; j++)
+		{
+			for (int k = 0; k < mrsiVoxNumX; k++)
+			{
+				if (lcm->tables[i][j][k].isAvailable)
+				{
+					map<string, Metabolite>::iterator tempPos;
+					tempPos = lcm->tables[i][j][k].metaInfo.find(metabolite);
+
+					if (tempPos != lcm->tables[i][j][k].metaInfo.end())
+					{
+						if (tempPos->second.qc)
+						{
+							v.push_back(tempPos->second.conc * lcm->tables[i][j][k].pvc);
+							//lcmInfo->append(QString::number(tempPos->second.conc * lcm->tables[i][j][k].pvc));
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// interquartile range
+	sort(v.begin(), v.end());
+	float q1 = v[v.size()*0.25];
+	float q3 = v[v.size()*0.75];
+	float iqr = q3 - q1;
+	float bound1 = q1 - iqr * 1.5;
+	float bound2 = q3 + iqr * 1.5;
+	// warning: pvc only
+	// warning: pvc only
+
 	mask->setBlankImgvol(slab->dx(), slab->dy(), slab->dz());
 	for (size_t i = 0; i < slab->dx(); i++)
 	{
@@ -1124,8 +1166,18 @@ void MainWindow::makeMask(string metabolite, bool pvc)
 							if (tempPos->second.qc && lcm->tables[abc.a][abc.b][abc.c].isAvailable)
 							{
 								//imagevol[i][j][k] = 1;
-								if (pvc){	mask->setImgVal(i, j, k, tempPos->second.conc * lcm->tables[abc.a][abc.b][abc.c].pvc);	}
-								else	{	mask->setImgVal(i, j, k, tempPos->second.conc);	}
+								if (pvc)
+								{
+									auto value = tempPos->second.conc * lcm->tables[abc.a][abc.b][abc.c].pvc;
+									if (value > bound1 && value < bound2 )
+										mask->setImgVal(i, j, k, value);
+									else
+										mask->setImgVal(i, j, k, 0);
+								}
+								else
+								{
+									mask->setImgVal(i, j, k, tempPos->second.conc);
+								}
 							}
 							else
 								mask->setImgVal(i, j, k, 0);
